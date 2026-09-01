@@ -25,6 +25,7 @@
           packages = [
             dotnetPkg
             pkgs.csharp-ls
+            pkgs.nodejs_22
           ];
 
           # Common native deps dotnet sometimes wants at runtime (globalization, TLS)
