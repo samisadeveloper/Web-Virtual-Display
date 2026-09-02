@@ -23,6 +23,7 @@ namespace WebVirtualDisplayClient
             .ConfigureServices((context, services) =>
             {
                     services.AddHostedService<WebServer>();
+                    services.AddHostedService<InputHandler>();
                     services.AddTransient<MainWindow>();
             }).Build();
 
