@@ -1,10 +1,14 @@
 using System.Collections.Concurrent;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using SIPSorcery.Net;
 
 namespace WebVirtualDisplayClient;
@@ -20,8 +24,12 @@ class WebServer : BackgroundService
                 var builder = WebApplication.CreateBuilder();
 
                 builder.Services.AddCors(options => {
-                                options.AddPolicy("AllowReact", p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
-                                });
+                        options.AddPolicy("AllowReact", p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+                });
+
+                builder.Services.ConfigureHttpJsonOptions(options => {
+                        options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                });
 
                 var app = builder.Build();
                 app.UseCors("AllowReact");
@@ -31,10 +39,10 @@ class WebServer : BackgroundService
                 // serve files from ./wwwroot/
                 String currentDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
                 app.UseStaticFiles(new StaticFileOptions
-                                {
-                                FileProvider = new PhysicalFileProvider(currentDir),
-                                RequestPath = ""
-                                });
+                {
+                        FileProvider = new PhysicalFileProvider(currentDir),
+                        RequestPath = ""
+                });
 
                 // INFO: to be honest I don't really know webrtc boilerplate
                 // I did not write any of the below code.
@@ -51,15 +59,16 @@ class WebServer : BackgroundService
                         Console.WriteLine("🚀 Browser connected! Starting data stream...");
 
                         // Start a background loop to stream data to the browser
-                        // TODO: stream actual data
+
+                        // TODO: move this and stream actual real data
                         _ = Task.Run(async () => {
-                                        int counter = 0;
-                                        while (dataChannel.readyState == RTCDataChannelState.open && !stoppingToken.IsCancellationRequested)
-                                        {
+                                int counter = 0;
+
+                                while (dataChannel.readyState == RTCDataChannelState.open && !stoppingToken.IsCancellationRequested) {
                                         dataChannel.send($"Hello from C# background worker! Count: {counter++}");
                                         await Task.Delay(1000); // Send data every second
-                                        }
-                                        });
+                                }
+                        });
                 };
 
                 dataChannel.onclose += () => Console.WriteLine("Browser disconnected.");
@@ -74,8 +83,7 @@ class WebServer : BackgroundService
                 // 4. Generate the local Offer SDP
                 var offer = peerConnection.createOffer();
 
-                // tell the server that the browser should be passive I guess????
-                offer.sdp = offer.sdp.Replace("a=setup:active", "a=setup:actpass"); 
+                // TODO: include video in the offer (we need to stream video at some point)
 
                 await peerConnection.setLocalDescription(offer);
                 latestOfferSdp = offer.sdp; // Save it so React can fetch it
@@ -83,29 +91,50 @@ class WebServer : BackgroundService
                 // --- Endpoints Using Native SIPSorcery Types ---
                 string generatedOfferSdp = offer.sdp.ToString();
 
-                // React polls this to pull your generated offer text
                 app.MapGet("/api/webrtc/offer", () => Results.Text(generatedOfferSdp));
 
-                // React POSTs its browser answer directly into SIPSorcery's initialization model
-                app.MapPost("/api/webrtc/answer", async (RTCSessionDescriptionInit answerPayload) => {
+                app.MapPost("/api/webrtc/answer", async (HttpContext ctx, IOptions<JsonOptions> jsonOptions) => {
+                        string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+
+                        RTCSessionDescriptionInit? answerPayload;
+                        try {
+                                answerPayload = JsonSerializer.Deserialize<RTCSessionDescriptionInit>(body, jsonOptions.Value.SerializerOptions);
+                        } catch (Exception ex) {
+                                Console.WriteLine($"ANSWER DESERIALIZE FAILED: {ex}");
+                                return Results.BadRequest(ex.Message);
+                        }
+
+                        if (answerPayload == null) {
+                                return Results.BadRequest("null payload");
+                        }
+
                         answerPayload.type = RTCSdpType.answer;
                         peerConnection.setRemoteDescription(answerPayload);
                         return Results.Ok();
                 });
-
-                // React polls this to fetch C#'s local ICE candidates
                 app.MapGet("/api/webrtc/ice", () => Results.Json(localIceCandidates));
+                app.MapPost("/api/webrtc/ice", async (HttpContext ctx) => {
+                        string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
 
-                // React POSTs browser candidates directly into SIPSorcery's ICE init model
-                app.MapPost("/api/webrtc/ice", (RTCIceCandidateInit icePayload) => {
-                                if (icePayload != null && !string.IsNullOrEmpty(icePayload.candidate)) {
+                        RTCIceCandidateInit? icePayload;
+
+                        try {
+                                icePayload = System.Text.Json.JsonSerializer.Deserialize<RTCIceCandidateInit>(body);
+                        } catch (Exception ex) { // failed to deserialize the payload
+                                Console.WriteLine($"ICE DESERIALIZE FAILED: {ex}");
+                                return Results.BadRequest(ex.Message);
+                        }
+
+                        // passes ICE 
+                        if (icePayload != null && !string.IsNullOrEmpty(icePayload.candidate)) {
                                 peerConnection.addIceCandidate(icePayload);
-                                }
                                 return Results.Ok();
-                                });
 
-                // TODO: Host on 0.0.0.0 so devices across your LAN can connect to port 5000
-                await app.RunAsync(stoppingToken);
-                // await app.RunAsync("http://0.0.0"); <-- this didn't work
+                        } else {
+                                return Results.BadRequest();
+                        }
+                });
+
+                await app.RunAsync("http://0.0.0.0:5000");
         }
 }

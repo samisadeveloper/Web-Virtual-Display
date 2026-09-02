@@ -24,10 +24,12 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
     // 2. Post local ICE candidates to C# host
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log("posting our ICE, the body looks like this\n", JSON.stringify(event.candidate.toJSON()));
+
         fetch('/api/webrtc/ice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ candidate: event.candidate.toJSON() }),
+          body: JSON.stringify(event.candidate.toJSON()),
         }).catch(err => console.error("Failed to send local ICE:", err));
       }
     };
@@ -94,7 +96,7 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
 
         setStatus('Sending answer back to C#...');
         
-        console.log(`posting our answer: ${answer.sdp} ${answer.type}`);
+        console.log(`posting our answer, the body looks like this \n ${JSON.stringify({sdp: answer.sdp, type: answer.type})}`);
 
         await fetch('/api/webrtc/answer', {
           method: 'POST',
