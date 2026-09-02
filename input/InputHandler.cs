@@ -11,6 +11,8 @@ class InputHandler : BackgroundService
         private static Point? lastPoint;
         private static bool allowRawInput = false;
 
+        // TODO: use the WPF way of capturing raw mouse input
+        // NOTE: the window cannot be closed or input data will be lossed, only hide the window.
         private static async void captureRawInputMouse(CancellationToken stoppingToken) {
                 await Task.Run(() => {
                         // let the wizards listen to the mouser and talk to the method
