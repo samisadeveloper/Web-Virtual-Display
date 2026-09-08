@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 
-namespace WebVirtualDisplayClient;
+namespace WebVirtualDisplayClient.input;
 
-class RawInputHandler {
+class RawMouseHandler {
         private const ushort WM_INPUT = 0x00FF;
         private const ushort RIDEV_INPUTSINK = 0x00000100;
         private const ushort GENERIC_DESKTOP = 0x01;
@@ -24,37 +24,38 @@ class RawInputHandler {
         }
 
 
-        // Non-nullable event 'rawMouseMovement' must contain a non-null value when exiting constructor.
-        // Consider adding the 'required' modifier or declaring the event as nullable. [CS8618]
-
         public static event EventHandler<RawMouseInputEventArgs>? rawMouseMovement;
 
         public static void InitializeRawInput(HwndSource source)
         {
                 source.AddHook(HwndHook);
 
+                // define a raw input device (this is a mouse in our case)
                 RAWINPUTDEVICE[] rawInputDevice = new RAWINPUTDEVICE[1];
                 rawInputDevice[0].usUsagePage = GENERIC_DESKTOP;
                 rawInputDevice[0].usUsage = MOUSE_IDENTIFIER;
                 rawInputDevice[0].dwFlags = RIDEV_INPUTSINK;
                 rawInputDevice[0].hwndTarget = source.Handle; 
 
-                RegisterRawInputDevices(rawInputDevice, 1, (uint)Marshal.SizeOf(typeof(RAWINPUTDEVICE)));
+                // register the RID
+                RegisterRawInputDevices(rawInputDevice, 1, (uint) Marshal.SizeOf(typeof(RAWINPUTDEVICE)));
         }
 
         private static IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
                 if (msg == WM_INPUT) {
-                        Task.Run(() => ProcessRawInput(lParam));
+                        Task.Run(() => ProcessRawInput(lParam)); // run this process everytime we recieve WM_INPUT
                 }
+
                 return IntPtr.Zero;
         }
 
         private static void ProcessRawInput(IntPtr lParam)
         {
+                // not sure what any of this means
+
                 uint dwSize = 0;
 
-                // Call once to get required buffer size
                 GetRawInputData(lParam, RID_INPUT, IntPtr.Zero, ref dwSize, (uint)Marshal.SizeOf(typeof(RAWINPUTHEADER)));
 
                 if (dwSize == 0) return;
@@ -66,9 +67,11 @@ class RawInputHandler {
 
                                 if (raw.header.dwType == RIM_TYPEMOUSE)
                                 {
+                                        // get the delta X and Y of the mouse
                                         int deltaX = raw.data.mouse.lLastX;
                                         int deltaY = raw.data.mouse.lLastY;
 
+                                        // invoke our raw mouse event
                                         rawMouseMovement?.Invoke(null, new RawMouseInputEventArgs(deltaX, deltaY));
                                 }
                         }

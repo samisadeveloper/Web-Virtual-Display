@@ -1,11 +1,6 @@
-using System.Collections;
-using System.ComponentModel;
 using System.Windows;
-using System.Windows.Automation.Peers;
-using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
+using WebVirtualDisplayClient.input;
 
 namespace WebVirtualDisplayClient {
     public partial class MainWindow : Window
@@ -22,7 +17,7 @@ namespace WebVirtualDisplayClient {
 
             if (source == null) throw new NullReferenceException("Could not find a reference for Main Window Hwnd source!");
 
-            RawInputHandler.InitializeRawInput(source);
+            RawMouseHandler.InitializeRawInput(source);
         }
     }
 }

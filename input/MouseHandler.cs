@@ -1,30 +1,26 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
-using SIPSorcery.Net;
-using static WebVirtualDisplayClient.RawInputHandler;
+using static WebVirtualDisplayClient.input.RawMouseHandler;
 
-namespace WebVirtualDisplayClient;
+namespace WebVirtualDisplayClient.input;
 
-class InputHandler : BackgroundService
+class MouseHandler : BackgroundService
 {
         private static Point lastMousePoint = new Point(){X = 0, Y = 0};
         private static Point globalMousePoint = new Point(){X = 0, Y = 0};
 
         private static bool enableRawInput = false;
-        private static Point extent = getScreenExtent(); // capture the max extent of the screen
 
-        private static RTCDataChannel? dataChannel;
+        private static Point extent = getScreenExtent(); // capture the max extent of the screen
+        private static Point smallerExtend = new Point(){X = extent.X - 120, Y = extent.Y - 120}; // declare a smaller extent
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-                RawInputHandler.rawMouseMovement += onRawMouseMovement;
+                RawMouseHandler.rawMouseMovement += onRawMouseMovement;
 
-                dataChannel = await WebRTCClient.createDataChannel();
-
-                dataChannel.onopen += () => {
-                        dataChannel.send("jhello world");
-                };
+                // create hooks for when windows are added and deleted (yes)
+                // when a the mouse goes beyond the extent, drop the current window and update the position accordingly
 
                 while (!stoppingToken.IsCancellationRequested) {
                         GetCursorPos(out Point point);
@@ -38,7 +34,7 @@ class InputHandler : BackgroundService
                                 } 
 
                                 enableRawInput = true; // enable it
-                        } else if (!globalMousePoint.BeyondExtent(extent)) { // make sure the virtual mouse is NOT beyond the extent
+                        } else if (!globalMousePoint.BeyondExtent(smallerExtend)) { // make sure the virtual mouse is NOT beyond the extent
                                 enableRawInput = false;
 
                                 // TODO: show the mouse
@@ -54,21 +50,53 @@ class InputHandler : BackgroundService
 
         private static void onRawMouseMovement(Object? sender, RawMouseInputEventArgs args) {
                 if (enableRawInput) {
-                        globalMousePoint.Add(args.deltaX, args.deltaX);
+                        globalMousePoint.Add(args.deltaX, args.deltaY);
 
                         if (globalMousePoint.BeyondExtent(extent)) { // is the mouse beyond the horizontal extent?
                                 SetCursorPos(lastMousePoint.X, lastMousePoint.Y);
+
+                                // here we can drop the current held window
+                                // and then use SetWindowPos() -- I think this is a method
+                                // make sure to use the offset position for this
                         }
 
-                        dataChannel?.send($"{globalMousePoint.X - extent.X} {globalMousePoint.Y}");
+                        // if the mosue is beyond the smaller extent we can send the coordinates to the host
+                        // we use a smaller extent here so the mouse can seemlessly go between screens
+                        if (globalMousePoint.BeyondExtent(smallerExtend)) {
+                                WindowManager.sendMouseMovement(new Point(){X = globalMousePoint.X - extent.X, Y = globalMousePoint.Y});
 
-                        // TODO: work on Y and left
-                        // Console.WriteLine($"raw mouse moved and is now at {globalMousePoint.X - extent.X} {globalMousePoint.Y}");
+                        }
                 }
         }
 
+        // [DllImport("user32.dll", SetLastError = true)]
+        // public static extern IntPtr SetWinEventHook(
+        //         uint eventMin,
+        //         uint eventMax,
+        //         IntPtr hmodWinEventProc,
+        //         WinEventDelegate lpfnWinEventProc,
+        //         uint idProcess,
+        //         uint idThread,
+        //         uint dwFlags
+        // );
+        //
+        // [DllImport("user32.dll", SetLastError = true)]
+        // [return: MarshalAs(UnmanagedType.Bool)]
+        // public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+        //
+        // public delegate void WinEventDelegate(
+        //         IntPtr hWinEventHook,
+        //         uint eventType,
+        //         IntPtr hwnd,
+        //         int idObject,
+        //         int idChild,
+        //         uint dwEventThread,
+        //         uint dwmsEventTime
+        // );    
+
+
         [StructLayout(LayoutKind.Sequential)]
-        private struct Point
+        public struct Point
         {
                 public int X;
                 public int Y;

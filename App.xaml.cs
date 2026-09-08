@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using WebVirtualDisplayClient.input;
 
 namespace WebVirtualDisplayClient
 {
@@ -23,7 +24,7 @@ namespace WebVirtualDisplayClient
             .ConfigureServices((context, services) =>
             {
                     services.AddHostedService<WebServer>();
-                    services.AddHostedService<InputHandler>();
+                    services.AddHostedService<MouseHandler>();
                     services.AddTransient<MainWindow>();
             }).Build();
 
@@ -42,6 +43,7 @@ namespace WebVirtualDisplayClient
         {
             await _host.StartAsync();
 
+            WindowManager.initialize();
             MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
 
             mainWindow.Show();
