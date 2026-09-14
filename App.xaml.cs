@@ -25,6 +25,7 @@ namespace WebVirtualDisplayClient
             {
                     services.AddHostedService<WebServer>();
                     services.AddHostedService<MouseHandler>();
+                    services.AddHostedService<WindowHandler>();
                     services.AddTransient<MainWindow>();
             }).Build();
 
