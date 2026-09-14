@@ -47,6 +47,9 @@
 
             echo "dotnet: $(dotnet --version 2>/dev/null || echo 'FAILED TO RUN')"
             echo "DOTNET_ROOT=$DOTNET_ROOT"
+
+            # We also need to dotnet restore
+            dotnet restore
           '';
         };
       });
