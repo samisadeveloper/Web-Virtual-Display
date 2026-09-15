@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using static WebVirtualDisplayClient.util.MouseUtil;
 
 namespace WebVirtualDisplayClient.input;
 
@@ -21,23 +22,32 @@ class RawWindowHandler
                 uint dwmsEventTime
         );
 
-        public struct WindowTrackData {
+        public struct DragOffset {
+                public int FromLeft;
+                public int FromRight;
+                public int FromTop;
+        }
+
+        public struct WindowCachedTrackData {
                 public IntPtr hwnd;
+                public DragOffset dragOffset;
+
                 public int width;
                 public int height;
         }
 
-        private static WindowTrackData? trackedWindow;
+        private static WindowCachedTrackData? trackedWindow;
 
-        public struct RawWindowInputEventArgs {
-                public WindowTrackData cachedData;
+        public struct WindowTrackData {
+                public WindowCachedTrackData cachedData;
+                
                 public int x;
                 public int y;
         }
 
-        public static event EventHandler<RawWindowInputEventArgs>? rawWindowMovement;
-        public static event EventHandler<WindowTrackData> rawWindowHeld;
-        public static event EventHandler<WindowTrackData> rawWindowReleased;
+        public static EventHandler<WindowTrackData>? rawWindowMovement;
+        public static EventHandler<WindowCachedTrackData>? rawWindowHeld;
+        public static EventHandler<WindowCachedTrackData>? rawWindowReleased;
 
         private static WinEventDelegate? _hookDelegate;
         private static IntPtr _hookHandle = IntPtr.Zero;
@@ -95,13 +105,23 @@ class RawWindowHandler
                         int width = rect.Right - rect.Left;
                         int height = rect.Bottom - rect.Top;
 
+                        // compute offset
+                        DragOffset offset = new DragOffset();
+
+                        GetCursorPos(out Point cursor);
+
+                        offset.FromLeft = cursor.X - rect.Left;
+                        offset.FromRight = width - offset.FromLeft;
+                        offset.FromTop = cursor.Y - rect.Top;
+
                         // start tracking a window
-                        trackedWindow = new WindowTrackData() {hwnd = hwnd, width = width, height = height};
-                        rawWindowHeld?.Invoke(null, (WindowTrackData) trackedWindow);
+                        trackedWindow = new WindowCachedTrackData() {hwnd = hwnd, dragOffset = offset, width = width, height = height};
+
+                        rawWindowHeld?.Invoke(null, (WindowCachedTrackData) trackedWindow);
 
                 } else if (eventType == EVENT_SYSTEM_MOVESIZEEND) {
                         if (trackedWindow != null) {
-                                rawWindowReleased?.Invoke(null, (WindowTrackData) trackedWindow);
+                                rawWindowReleased?.Invoke(null, (WindowCachedTrackData) trackedWindow);
                         }
 
                         trackedWindow = null; // no longer tracking a window
@@ -110,22 +130,28 @@ class RawWindowHandler
                         RECT rect = new RECT();
                         GetWindowRect(hwnd, ref rect);
 
+                        int newWidth = rect.Right - rect.Left;
+                        int newHeight = rect.Bottom - rect.Top;
+
+                        // if the width and height change this is a resize, not a move.
+                        if (trackedWindow?.width != newWidth) return;
+                        if (trackedWindow?.height != newHeight) return;
+
                         int x = rect.Left;
                         int y = rect.Top;
 
-                        RawWindowInputEventArgs args = new RawWindowInputEventArgs() {
+                        WindowTrackData args = new WindowTrackData() {
                                 x = x,
                                 y = y,
-                                cachedData = (WindowTrackData) trackedWindow // this cast should be safe because hwnd exists but lets hope.
+                                cachedData = (WindowCachedTrackData) trackedWindow // this cast should be safe because hwnd exists but lets hope.
                         };
-
 
                         rawWindowMovement?.Invoke(null, args);
                 }
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        private struct RECT
+        public struct RECT
         {
                 public int Left;
                 public int Top;
@@ -167,7 +193,7 @@ class RawWindowHandler
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
+        public static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
 
         [DllImport("user32.dll")]
         private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);

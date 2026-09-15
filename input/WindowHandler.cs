@@ -1,89 +1,83 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
 using WebVirtualDisplayClient.util;
+using static WebVirtualDisplayClient.input.RawWindowHandler;
+using static WebVirtualDisplayClient.input.WindowManager;
 using static WebVirtualDisplayClient.util.MouseUtil;
 
 namespace WebVirtualDisplayClient.input;
 
 class WindowHandler : BackgroundService
 {
-        private struct DragOffset {
-                public int FromLeft;
-                public int FromRight;
-                public int FromTop;
-        }
-
-        private struct DraggedWindow {
-                public IntPtr hwnd;
-                public DragOffset offset;
-        }
-
-        private static Point extent = ScreenExtent.getScreenExtent();
-        private static DraggedWindow? draggedWindow;
+        private static Point extent = ScreenExtent.GetScreenExtent();
+        private static WindowCachedTrackData? draggedWindow;
+        private static bool beyondExtent = false;
         
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
                 MouseHandler.onMouseMoveGlobal += onMouseMoveGlobal;
 
                 await Task.Run(() => {
-                        // attach the event before starting input
-                        // why? initialize raw input blocks the thread forever
-                        RawWindowHandler.rawWindowMovement += onRawWindowMovement; 
+                        MouseUtil.mouseClickEvent += onMouseClick;
+                        RawWindowHandler.rawWindowHeld += onWindowHeld;
+                        RawWindowHandler.rawWindowMovement += onWindowMove;
 
                         RawWindowHandler.initializeRawInput(stoppingToken);
                 });
         }
 
-        public void onMouseMoveGlobal(Object? sender, Point cursor) {
-                if (draggedWindow != null) {
-                        DragOffset offset = draggedWindow.Value.offset;
+        public void onWindowMove(Object? sender, WindowTrackData window) {
+                int x = window.x + window.cachedData.width;
+                int y = window.y + window.cachedData.height;
 
-                        Console.WriteLine($"moving window to {cursor.X} {cursor.Y}");
-                        SetWindowPos(draggedWindow.Value.hwnd, IntPtr.Zero, cursor.X - offset.FromLeft, cursor.Y - offset.FromTop, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-                } else {
-                        Console.WriteLine("hello bald");
+                Point point = new Point() {X = x, Y = y};
+
+                if (point.BeyondExtent(extent)) {
+                        if (!beyondExtent) {
+                                SendMessage(window.cachedData.hwnd, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); 
+                                // let go of the window when its beyond the extent.
+
+                                beyondExtent = true;
+                        }
                 }
         }
 
-        public void onRawWindowMovement(Object? sender, RawWindowHandler.RawWindowInputEventArgs args) {
-                int x = args.x + args.cachedData.width;
+        public void onMouseMoveGlobal(Object? sender, Point cursor) {
+                if (draggedWindow == null) return;
+                if (!beyondExtent) return;
 
-                if (x >= extent.X) {
-                        Console.WriteLine("window is beyond extent!");
+                DragOffset offset = draggedWindow.Value.dragOffset;
 
-                        // compute the offset and then store it
-                        DragOffset offset = new DragOffset();
+                SetWindowPos(draggedWindow.Value.hwnd, IntPtr.Zero, cursor.X - offset.FromLeft, cursor.Y - offset.FromTop, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
-                        GetCursorPos(out Point cursor);
+                WindowData windowData = new WindowData() {
+                        hwnd = (int) draggedWindow.Value.hwnd,
+                        x = (cursor.X - offset.FromLeft) - extent.X,
+                        y = (cursor.Y - offset.FromTop),
+                        width = draggedWindow.Value.width,
+                        height = draggedWindow.Value.height,
+                };
 
-                        offset.FromLeft = cursor.X - args.x;
-                        offset.FromRight = args.cachedData.width - offset.FromLeft;
-                        offset.FromTop = cursor.Y - args.y;
+                WindowManager.updateWindow(windowData);
+        }
 
-                        // now lets test the offset by setting the position of the window to the position of the cursor with the offset
-                        draggedWindow = new DraggedWindow() {hwnd = args.cachedData.hwnd, offset = offset};
+        public void onWindowHeld(Object? sender, WindowCachedTrackData data) {
+                RECT rect = new RECT();
 
-                        SendMessage(args.cachedData.hwnd, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); // let go of the window
-                } else {
-                        draggedWindow = null;
+                GetWindowRect(data.hwnd, ref rect);
+
+                Point point = new Point(){X = rect.Left, Y = rect.Top};
+
+                if (point.BeyondExtent(extent)) beyondExtent = true;
+
+                draggedWindow = data;
+        }
+
+        public void onMouseClick(Object? sender, MouseEventType type) {
+                if (type.Equals(MouseEventType.RELEASED)) {
+                                draggedWindow = null;
+                                beyondExtent = false;
                 }
-
-                // WindowManager.WindowData windowData = new WindowManager.WindowData() {
-                //         hwnd = (int) args.cachedData.hwnd,
-                //
-                //         x = args.x,
-                //         y = args.y,
-                //
-                //         width = args.cachedData.width,
-                //         height = args.cachedData.height,
-                // };
-
-                // so unfortunately we can't just send the window movement data directly we have to do a few things
-                // 1: we have to check if the window has crossed the boundary, unfortunately once the window crosses the boundary we can no longer grab it
-                // 2: when the window is "passed" the boundary we can stop grabbing it and move it programatically wherever the mouse is located
-                // 3: whenever the window gets moved programatically we must set window movement
-
-                // WindowManager.sendWindowMovement(windowData);
         }
 
         [DllImport("user32.dll", SetLastError = true)]
