@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using WebVirtualDisplayClient.input;
+using WebVirtualDisplayClient.util;
 
 namespace WebVirtualDisplayClient
 {
@@ -44,6 +45,8 @@ namespace WebVirtualDisplayClient
         {
             await _host.StartAsync();
 
+            MouseUtil.StartMouseHook();
+
             WindowManager.initialize();
             MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
 
@@ -56,6 +59,8 @@ namespace WebVirtualDisplayClient
         private async void OnExit(object sender, ExitEventArgs e)
         {
             await _host.StopAsync();
+
+            MouseUtil.StopMouseHook();
 
             _host.Dispose();
         }
