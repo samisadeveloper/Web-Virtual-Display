@@ -16,33 +16,49 @@ class WebRTCClient {
         private static ConcurrentQueue<String> remoteIceCandidates = new ConcurrentQueue<string>();
         private static ConcurrentBag<String> localIceCandidates = new ConcurrentBag<string>();
 
+        private static void ResetConnection() {
+                try {
+                        peerConnection.close();
+                } catch {}
+
+                peerConnection = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer>() });
+                localIceCandidates.Clear();
+                remoteIceCandidates.Clear();
+
+                Task.Run(async () => {
+                        offer = peerConnection.createOffer();
+                        await peerConnection.setLocalDescription(offer);
+
+                        // Re-bind the ice candidate listener to the new instance
+                        peerConnection.onicecandidate += (candidate) => {
+                                if (!string.IsNullOrEmpty(candidate.candidate)) {
+                                        localIceCandidates.Add(candidate.candidate);
+                                }
+                        };
+                });
+        }
+
         public static async Task<RTCDataChannel> createDataChannel() {
                 return await peerConnection.createDataChannel("data-stream");
         }
 
         public async static Task initializeClient(CancellationToken stoppingToken) {
-                // RTCDataChannel dataChannel = await peerConnection.createDataChannel("data-stream");
-                //
-                // dataChannel.onopen += () => {
-                        // Console.WriteLine("\n\n\nData stream was opened");
-                        // // TODO: move this and stream actual real data
-                        // _ = Task.Run(async () => {
-                        //         Console.WriteLine("Data channel is now open!");
-                        //
-                        //         int counter = 0;
-                        //
-                        //         while (dataChannel.readyState == RTCDataChannelState.open && !stoppingToken.IsCancellationRequested) {
-                        //                 dataChannel.send($"Hello from C# background worker! Count: {counter++}");
-                        //                 await Task.Delay(1000); // Send data every second
-                        //         }
-                        // });
-                // };
-
-                // dataChannel.onclose += () => Console.WriteLine("Browser disconnected.");
-
                 peerConnection.onicecandidate += (candidate) => {
                         if (!string.IsNullOrEmpty(candidate.candidate)) {
                                 localIceCandidates.Add(candidate.candidate);
+                        }
+                };
+
+                peerConnection.onconnectionstatechange += (state) => {
+                        Console.WriteLine($"WebRTC Connection State Changed: {state}");
+
+                        if (state == RTCPeerConnectionState.disconnected || 
+                                        state == RTCPeerConnectionState.failed || 
+                                        state == RTCPeerConnectionState.closed) 
+                        {
+                                Console.WriteLine("\n\n\nPeer disconnected! Resetting WebRTC Client...");
+
+                                ResetConnection();
                         }
                 };
 
@@ -54,7 +70,19 @@ class WebRTCClient {
         public static void RegisterSignalingRoutes(WebApplication app) {
                 if (offer == null) throw new NullReferenceException("Offer not generated yet");
 
-                app.MapGet("/api/webrtc/offer", () => Results.Text(offer.sdp.ToString()));
+                // fix race condition with offer
+                app.MapGet("/api/webrtc/offer", async () => {
+                        int attempts = 0;
+                        // Wait up to 2 seconds if the server is actively generating a new offer
+                        while ((offer == null || peerConnection.signalingState != RTCSignalingState.have_local_offer) && attempts < 20) {
+                                await Task.Delay(100);
+                                attempts++;
+                        }
+
+                        if (offer == null) return Results.NotFound("Offer not ready yet");
+
+                        return Results.Text(offer.sdp.ToString());
+                });
 
                 app.MapPost("/api/webrtc/answer", async (HttpContext ctx, IOptions<JsonOptions> jsonOptions) => {
                         string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
