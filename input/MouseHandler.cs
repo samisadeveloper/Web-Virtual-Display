@@ -8,11 +8,14 @@ namespace WebVirtualDisplayClient.input;
 class MouseHandler : BackgroundService
 {
         private static Point lastMousePoint = new Point(){X = 0, Y = 0};
-        private static Point globalMousePoint = new Point(){X = 0, Y = 0};
+        private static Point _globalMousePoint = new Point(){X = 0, Y = 0};
+
+        // encapsulate global mouse point
+        public static Point GlobalMousePoint { get { return _globalMousePoint; } }
 
         private static bool enableRawInput = false;
 
-        private static Point extent = ScreenExtent.getScreenExtent(); // capture the max extent of the screen
+        private static Point extent = ScreenExtent.GetScreenExtent(); // capture the max extent of the screen
         private static Point smallerExtend = new Point(){X = extent.X - 120, Y = extent.Y - 120}; // declare a smaller extent
 
         public static EventHandler<Point>? onMouseMoveGlobal;
@@ -27,13 +30,13 @@ class MouseHandler : BackgroundService
                         if (point.BeyondExtent(extent)) { // is the mouse beyond the horizontal extent?
                                 if (!enableRawInput) { // raw input is not already enabled
                                         lastMousePoint = point;
-                                        globalMousePoint = point;
+                                        _globalMousePoint = point;
 
                                         // TODO: hide the mouse
                                 } 
 
                                 enableRawInput = true; // enable it
-                        } else if (!globalMousePoint.BeyondExtent(smallerExtend)) { // make sure the virtual mouse is NOT beyond the extent
+                        } else if (!_globalMousePoint.BeyondExtent(smallerExtend)) { // make sure the virtual mouse is NOT beyond the extent
                                 onMouseMoveGlobal?.Invoke(null, point);
 
                                 enableRawInput = false;
@@ -44,7 +47,7 @@ class MouseHandler : BackgroundService
                         }
 
                         try {
-                                await Task.Delay(TimeSpan.FromMilliseconds(50));
+                                await Task.Delay(TimeSpan.FromMilliseconds(5));
                         } catch (OperationCanceledException) {
                                 break;
                         }
@@ -53,22 +56,18 @@ class MouseHandler : BackgroundService
 
         private static void onRawMouseMovement(Object? sender, RawMouseInputEventArgs args) {
                 if (enableRawInput) {
-                        globalMousePoint.Add(args.deltaX, args.deltaY);
+                        _globalMousePoint.Add(args.deltaX, args.deltaY);
 
-                        if (globalMousePoint.BeyondExtent(extent)) { // is the mouse beyond the horizontal extent?
+                        if (_globalMousePoint.BeyondExtent(extent)) { // is the mouse beyond the horizontal extent?
                                 SetCursorPos(lastMousePoint.X, lastMousePoint.Y);
-
-                                // here we can drop the current held window
-                                // and then use SetWindowPos() -- I think this is a method
-                                // make sure to use the offset position for this
                         }
 
                         // if the mouse is beyond the smaller extent we can send the coordinates to the host
                         // we use a smaller extent here so the mouse can seemlessly go between screens
-                        if (globalMousePoint.BeyondExtent(smallerExtend)) {
-                                WindowManager.sendMouseMovement(new Point(){X = globalMousePoint.X - extent.X, Y = globalMousePoint.Y});
+                        if (_globalMousePoint.BeyondExtent(smallerExtend)) {
+                                WindowManager.sendMouseMovement(new Point(){X = _globalMousePoint.X - extent.X, Y = _globalMousePoint.Y});
 
-                                onMouseMoveGlobal?.Invoke(null, globalMousePoint);
+                                onMouseMoveGlobal?.Invoke(null, _globalMousePoint);
                         }
                 }
         }
