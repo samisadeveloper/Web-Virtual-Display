@@ -38,20 +38,13 @@ class RawMouseHandler {
                 rawInputDevice[0].hwndTarget = source.Handle; 
 
                 // register the RID
-                bool success = RegisterRawInputDevices(rawInputDevice, 1, (uint) Marshal.SizeOf(typeof(RAWINPUTDEVICE)));
-
-                if (success) {
-                        Console.WriteLine("Raw Mouse: Successfully registered raw input device");
-                } else {
-                        Console.WriteLine("Raw Mouse: Something went wrong while registering raw input device");
-                }
+                RegisterRawInputDevices(rawInputDevice, 1, (uint) Marshal.SizeOf(typeof(RAWINPUTDEVICE)));
         }
 
         private static IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
                 if (msg == WM_INPUT) {
-                        ProcessRawInput(lParam);
-                        handled = true;
+                        Task.Run(() => ProcessRawInput(lParam)); // run this process everytime we recieve WM_INPUT
                 }
 
                 return IntPtr.Zero;
@@ -59,6 +52,8 @@ class RawMouseHandler {
 
         private static void ProcessRawInput(IntPtr lParam)
         {
+                // not sure what any of this means
+
                 uint dwSize = 0;
 
                 GetRawInputData(lParam, RID_INPUT, IntPtr.Zero, ref dwSize, (uint)Marshal.SizeOf(typeof(RAWINPUTHEADER)));

@@ -19,7 +19,7 @@ class MouseUtil {
                 // TODO: we should probably return which axis(s) the point is beyond extent in 
                 // EX: the point may be beyont the X extent AND the Y extent or the point may be beyond the X axis in the negative direction
                 public bool BeyondExtent(Point extent) {
-                        return ((this.X >= extent.X - 1));
+                        return ((this.X >= extent.X - 1) || (this.X <= 0));
                 }
 
                 public float Distance(Point point) { return Vector2.DistanceSquared(new Vector2(point.X, point.Y), new Vector2(this.X, this.Y)); }
