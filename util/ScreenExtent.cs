@@ -8,7 +8,7 @@ class ScreenExtent {
         private const int SM_CXVIRTUALSCREEN = 78;
         private const int SM_CYVIRTUALSCREEN = 79;
 
-        public static Point getScreenExtent() {
+        public static Point GetScreenExtent() {
                 int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
                 int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
 
