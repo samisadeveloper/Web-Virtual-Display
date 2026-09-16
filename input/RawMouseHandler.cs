@@ -62,7 +62,10 @@ class RawMouseHandler {
 
                 GetRawInputData(lParam, RID_INPUT, IntPtr.Zero, ref dwSize, (uint)Marshal.SizeOf(typeof(RAWINPUTHEADER)));
 
-                if (dwSize == 0) return;
+                if (dwSize == 0) {
+                        Console.WriteLine("Raw Mouse: Failed to get input data!");
+                        return;
+                }
 
                 IntPtr buffer = Marshal.AllocHGlobal((int)dwSize);
                 try {
