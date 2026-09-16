@@ -11,7 +11,7 @@ namespace WebVirtualDisplayClient.input
                 private static SIPSorcery.Net.RTCDataChannel? windowMovement;
 
                 public struct WindowData {
-                        public int hwnd;
+                        public IntPtr hwnd;
                         public int x;
                         public int y;
                         public int width;
@@ -28,7 +28,8 @@ namespace WebVirtualDisplayClient.input
                         }
                 }
 
-                private static Dictionary<int, WindowData> windowRegistry = new Dictionary<int, WindowData>();
+                private static Dictionary<IntPtr, WindowData> windowRegistry = new Dictionary<IntPtr, WindowData>();
+
                 private static Point extent = ScreenExtent.GetScreenExtent();
 
                 public static async void initialize() {
@@ -72,7 +73,7 @@ namespace WebVirtualDisplayClient.input
 
                         var data = new {
                                 channel = "window",
-                                id = window.hwnd, // use the window's hwnd as the id
+                                id = (int) window.hwnd, // use the window's hwnd as the id but casted to a regular int
                                 x = window.x,
                                 y = window.y,
                                 width = window.width,
@@ -88,6 +89,17 @@ namespace WebVirtualDisplayClient.input
                 }
 
                 public static void updateWindow(WindowData window) {
+                        if (!windowRegistry.ContainsKey(window.hwnd)) {
+                                Task.Run(() => {
+                                                Console.WriteLine("attempting to capture window by its hwnd");
+
+                                                // we will just get a library to do this for us too god damn hard
+                                                // to do it manually
+
+                                                // Found one! https://github.com/sskodje/ScreenRecorderLib
+                                });
+                        }
+
                         windowRegistry[window.hwnd] = window;
 
                         sendWindowMovement(window);

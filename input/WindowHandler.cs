@@ -51,12 +51,14 @@ class WindowHandler : BackgroundService
                 SetWindowPos(draggedWindow.hwnd, IntPtr.Zero, cursor.X - offset.FromLeft, cursor.Y - offset.FromTop, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
                 WindowData windowData = new WindowData() {
-                        hwnd = (int) draggedWindow.hwnd,
+                        hwnd = draggedWindow.hwnd,
                         x = (cursor.X - offset.FromLeft) - extent.X,
                         y = (cursor.Y - offset.FromTop),
                         width = draggedWindow.width,
                         height = draggedWindow.height,
                 };
+
+                // we need to get the capture of the window now
 
                 WindowManager.updateWindow(windowData);
         }
