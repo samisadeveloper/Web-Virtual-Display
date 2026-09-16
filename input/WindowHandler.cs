@@ -10,7 +10,7 @@ namespace WebVirtualDisplayClient.input;
 class WindowHandler : BackgroundService
 {
         private static Point extent = ScreenExtent.GetScreenExtent();
-        private static WindowCachedTrackData? draggedWindow;
+        private static WindowCachedTrackData draggedWindow;
         private static bool beyondExtent = false;
         
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,19 +43,19 @@ class WindowHandler : BackgroundService
         }
 
         public void onMouseMoveGlobal(Object? sender, Point cursor) {
-                if (draggedWindow == null) return;
+                if (draggedWindow.hwnd == 0) return;
                 if (!beyondExtent) return;
 
-                DragOffset offset = draggedWindow.Value.dragOffset;
+                DragOffset offset = draggedWindow.dragOffset;
 
-                SetWindowPos(draggedWindow.Value.hwnd, IntPtr.Zero, cursor.X - offset.FromLeft, cursor.Y - offset.FromTop, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+                SetWindowPos(draggedWindow.hwnd, IntPtr.Zero, cursor.X - offset.FromLeft, cursor.Y - offset.FromTop, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
                 WindowData windowData = new WindowData() {
-                        hwnd = (int) draggedWindow.Value.hwnd,
+                        hwnd = (int) draggedWindow.hwnd,
                         x = (cursor.X - offset.FromLeft) - extent.X,
                         y = (cursor.Y - offset.FromTop),
-                        width = draggedWindow.Value.width,
-                        height = draggedWindow.Value.height,
+                        width = draggedWindow.width,
+                        height = draggedWindow.height,
                 };
 
                 WindowManager.updateWindow(windowData);
@@ -75,7 +75,7 @@ class WindowHandler : BackgroundService
 
         public void onMouseClick(Object? sender, MouseEventType type) {
                 if (type.Equals(MouseEventType.RELEASED)) {
-                                draggedWindow = null;
+                                draggedWindow = default;
                                 beyondExtent = false;
                 }
         }
