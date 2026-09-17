@@ -13,6 +13,9 @@ export type WebRTCStatus =
 export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const dataChannel = useRef<RTCDataChannel | null>(null);
+  const currentSdpRef = useRef<string | null>(null);
+
+  const [streams, setStreams] = useState<MediaStream[]>([]);
   const [status, setStatus] = useState<WebRTCStatus>('Idle');
 
   useEffect(() => {
@@ -28,6 +31,20 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
           body: JSON.stringify(event.candidate.toJSON()),
         }).catch(err => console.error("Failed to send local ICE:", err));
       }
+    };
+
+    peerConnection.current.ontrack = (event) => {
+            const incomingStreams = [...event.streams]; 
+            if (incomingStreams.length === 0) return;
+
+            const targetStream = incomingStreams[incomingStreams.length - 1];
+
+            setStreams((prev) => {
+                    // If we already have the stream ID, don't change anything in state.
+                    // The browser is already modifying the tracks inside the object natively.
+                    if (prev.some(s => s.id === targetStream.id)) return prev;
+                    return [...prev, targetStream];
+            });
     };
 
     peerConnection.current.ondatachannel = (event) => {
@@ -69,16 +86,16 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
       }
     }, 1500);
 
-    const startHandshake = async () => {
+    const executeNegotiation = async () => {
       try {
-        setStatus('Fetching offer from C# host...');
         const res = await fetch('/api/webrtc/offer');
         const offerSdp = await res.text();
 
-        if (!offerSdp || !peerConnection.current) {
-          setStatus('Error: C# host has not generated an offer yet.');
-          return;
-        }
+        if (!offerSdp || !peerConnection.current) return;
+        
+        // Skip execution if the SDP offer hasn't actually updated
+        if (offerSdp === currentSdpRef.current) return;
+        currentSdpRef.current = offerSdp;
 
         await peerConnection.current.setRemoteDescription(
           new RTCSessionDescription({ type: 'offer', sdp: offerSdp })
@@ -87,29 +104,33 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
         const answer = await peerConnection.current.createAnswer();
         await peerConnection.current.setLocalDescription(answer);
 
-        setStatus('Sending answer back to C#...');
+        console.log("Renegotiatied with the C# host!");
 
         await fetch('/api/webrtc/answer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sdp: answer.sdp, type: answer.type }),
         });
-
-        setStatus('Handshake sent. Finalizing local connection...');
       } catch (err) {
-        console.error(err);
-        setStatus('Connection failed.');
+        console.error("Negotiation update failed:", err);
       }
     };
 
-    startHandshake();
+    const negotiationPoll = setInterval(() => {
+       executeNegotiation();
+    }, 1000);
+
+    // Run initial connection handshake on mount
+    setStatus('Fetching offer from C# host...');
+    executeNegotiation().then(() => setStatus('Handshake sent. Finalizing local connection...'));
 
     return () => {
       clearInterval(iceInterval);
+      clearInterval(negotiationPoll);
       if (dataChannel.current) dataChannel.current.close();
       if (peerConnection.current) peerConnection.current.close();
     };
   }, []);
 
-  return { status };
+  return { status, streams };
 }
