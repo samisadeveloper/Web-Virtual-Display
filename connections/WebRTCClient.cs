@@ -16,6 +16,10 @@ class WebRTCClient {
         private static ConcurrentQueue<String> remoteIceCandidates = new ConcurrentQueue<string>();
         private static ConcurrentBag<String> localIceCandidates = new ConcurrentBag<string>();
 
+        public static RTCPeerConnection getPeerConnection() {
+                return peerConnection;
+        }
+
         private static void ResetConnection() {
                 try {
                         peerConnection.close();
@@ -62,6 +66,13 @@ class WebRTCClient {
                         }
                 };
 
+                
+                peerConnection.onnegotiationneeded += async () => {
+                        offer = peerConnection.createOffer();
+
+                        await peerConnection.setLocalDescription(offer);
+                };
+                
                 offer = peerConnection.createOffer();
 
                 await peerConnection.setLocalDescription(offer);
