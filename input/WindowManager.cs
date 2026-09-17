@@ -1,4 +1,10 @@
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using ScreenRecorderLib;
+using SIPSorcery.Media;
+using SIPSorcery.Net;
+using Vpx.Net;
 using WebVirtualDisplayClient.util;
 using static WebVirtualDisplayClient.input.RawWindowHandler;
 using static WebVirtualDisplayClient.util.MouseUtil;
@@ -84,25 +90,69 @@ namespace WebVirtualDisplayClient.input
                         windowMovement?.send(JsonSerializer.Serialize(data));
                 }
 
-                private static void updateWindowPixelData(IntPtr windowHWND) {
-                        // send the pixel data of a specific window
+                private static void updateWindowPixelData(Object? sender, FrameRecordedEventArgs args) {
+                        FrameBitmapData bitmapData = args.BitmapData;
+
+                        if (bitmapData != null) {
+                                int length = bitmapData.Length;
+
+                                byte[] byteArray = new byte[length];
+                                Marshal.Copy(bitmapData.Data, byteArray, 0, length);
+
+                                int width = bitmapData.Width;
+                                int height = bitmapData.Height;
+
+                                // byte[] encodedFrame = VideoEncoderOptions.EncodeVideo()
+                        }
                 }
 
                 public static void updateWindow(WindowData window) {
+                        sendWindowMovement(window);
+
                         if (!windowRegistry.ContainsKey(window.hwnd)) {
-                                Task.Run(() => {
-                                                Console.WriteLine("attempting to capture window by its hwnd");
+                                Task.Run(async () => {
+                                                // Stream stream = Stream.Null;
+                                                //
+                                                // RecorderOptions options = new RecorderOptions {
+                                                //         OutputOptions = new OutputOptions {
+                                                //                 IsVideoFramePreviewEnabled = true // required to get that bitmap data
+                                                //         },
+                                                //
+                                                //         SourceOptions = new SourceOptions {
+                                                //                 // record the window by handle
+                                                //                 RecordingSources = new List<RecordingSourceBase>{new WindowRecordingSource(window.hwnd)}}
+                                                // };
+                                                //
+                                                //
+                                                // Recorder recorder = Recorder.CreateRecorder(options);
+                                                //
+                                                // recorder.OnFrameRecorded += updateWindowPixelData;
+                                                
+                                                var pc = WebRTCClient.getPeerConnection();
 
-                                                // we will just get a library to do this for us too god damn hard
-                                                // to do it manually
+                                                var vp8Codec = new VP8Codec();
+                                                var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
 
-                                                // Found one! https://github.com/sskodje/ScreenRecorderLib
+                                                var testPatternSource = new VideoTestPatternSource(vp8Codec);
+
+                                                var track = new MediaStreamTrack(testPatternSource.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+
+                                                pc.addTrack(track);
+
+                                                testPatternSource.OnVideoSourceEncodedSample += pc.SendVideo;
+                                                pc.OnVideoFormatsNegotiated += formats => testPatternSource.SetVideoSourceFormat(formats.First());
+
+                                                Console.WriteLine("\n\n\nHEY SHHHH THE VIDEO IS STARTING");
+
+                                                await testPatternSource.StartVideo();
+
+                                                Console.WriteLine("\n\n\nHEY LISTEN THE VIDEO STARTED I THINK");
+
+                                                // recorder.Record(stream);
                                 });
                         }
 
                         windowRegistry[window.hwnd] = window;
-
-                        sendWindowMovement(window);
                 }
 
                 public static void sendMouseMovement(Point point) {
