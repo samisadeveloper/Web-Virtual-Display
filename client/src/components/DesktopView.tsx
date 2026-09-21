@@ -1,5 +1,5 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { useWebRTCConnection } from "./hooks/UseWebRTCConnection";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
+import { useWebRTCConnection } from "../hooks/UseWebRTCConnection";
 
 import { FaMousePointer } from "react-icons/fa";
 
@@ -12,30 +12,7 @@ type Component = {
         height?: number;
 };
 
-function MediaPlayer({ style, mediaStream }: { style: CSSProperties; mediaStream: MediaStream | null }) {
-  // This callback fires whenever the element mounts or updates in the DOM
-  const videoElementRef = (el: HTMLVideoElement | null) => {
-    if (el && mediaStream) {
-      // Just like the official docs: forcefully assign it to the DOM node directly
-      if (el.srcObject !== mediaStream) {
-        el.srcObject = mediaStream;
-      }
-    }
-  };
-
-  return (
-    <video
-      ref={videoElementRef} // 👈 Using the callback ref here
-      autoPlay
-      playsInline
-      muted
-      controls
-      style={style}
-    />
-  );
-}
-
-function renderComponent(component: Component, mediaStream: MediaStream | null) : ReactNode {
+function renderComponent(component: Component, videoRef: Ref<HTMLVideoElement>) : ReactNode {
         let style = {position: 'absolute', top: component.y, left: component.x} as CSSProperties;
 
         // append the width and height if applicable
@@ -44,8 +21,15 @@ function renderComponent(component: Component, mediaStream: MediaStream | null) 
 
         const renderers: Record<string, () => ReactNode> = {
                 mouse: () => <FaMousePointer style={style} />,
-                window: () => <MediaPlayer style={style} mediaStream={mediaStream}/>
-                // window: () => <video autoPlay={true} src={mediaStream} style={{backgroundColor: 'white', ...style}}>This is a window {component.x}, {component.y}</video>
+                window: () => <video
+                        autoPlay
+                        playsInline
+                        width={component.width}
+                        height={component.height}
+                        muted
+                        ref={videoRef} 
+                        style={style} 
+                />
         };
 
         const rendered = renderers[component.channel]?.();
@@ -54,13 +38,16 @@ function renderComponent(component: Component, mediaStream: MediaStream | null) 
 }
 
 export default function DesktopView() {
+        const videoRef = useRef<HTMLVideoElement>(null);
+
         const [components, setComponents] = useState<Record<string, ReactNode>>({});
 
         const { status, streams } = useWebRTCConnection((data) => {
                 const componentData = JSON.parse(data) as Component;
 
                 if (componentData) {
-                        const renderered = renderComponent(componentData, streams[0]);
+                        // TODO: get the video reference of the component, not hardcoded.
+                        const renderered = renderComponent(componentData, videoRef);
 
                         setComponents(prevComponents => {
                                 return {
@@ -69,9 +56,15 @@ export default function DesktopView() {
                                 }
                         });
                 }
-
         });
 
+        // TODO: get stream by HWND instead of hard coding the first stream
+        useEffect(() => {
+                if (streams[0]) {
+                        if (videoRef.current) videoRef.current.srcObject = streams[0];
+                }
+        }, [streams, videoRef.current]);
+        
         if (status != 'Connected') {
                 return (
                         <div>
