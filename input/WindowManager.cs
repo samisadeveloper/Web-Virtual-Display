@@ -5,6 +5,7 @@ using ScreenRecorderLib;
 using SIPSorcery.Media;
 using SIPSorcery.Net;
 using Vpx.Net;
+using WebVirtualDisplayClient.rendering;
 using WebVirtualDisplayClient.util;
 using static WebVirtualDisplayClient.input.RawWindowHandler;
 using static WebVirtualDisplayClient.util.MouseUtil;
@@ -101,8 +102,6 @@ namespace WebVirtualDisplayClient.input
 
                                 int width = bitmapData.Width;
                                 int height = bitmapData.Height;
-
-                                // byte[] encodedFrame = VideoEncoderOptions.EncodeVideo()
                         }
                 }
 
@@ -111,44 +110,48 @@ namespace WebVirtualDisplayClient.input
 
                         if (!windowRegistry.ContainsKey(window.hwnd)) {
                                 Task.Run(async () => {
-                                                // Stream stream = Stream.Null;
-                                                //
-                                                // RecorderOptions options = new RecorderOptions {
-                                                //         OutputOptions = new OutputOptions {
-                                                //                 IsVideoFramePreviewEnabled = true // required to get that bitmap data
-                                                //         },
-                                                //
-                                                //         SourceOptions = new SourceOptions {
-                                                //                 // record the window by handle
-                                                //                 RecordingSources = new List<RecordingSourceBase>{new WindowRecordingSource(window.hwnd)}}
-                                                // };
-                                                //
-                                                //
-                                                // Recorder recorder = Recorder.CreateRecorder(options);
-                                                //
-                                                // recorder.OnFrameRecorded += updateWindowPixelData;
-                                                
                                                 var pc = WebRTCClient.getPeerConnection();
+
+                                                Stream stream = Stream.Null;
+
+                                                RecorderOptions options = new RecorderOptions {
+                                                        OutputOptions = new OutputOptions {
+                                                                IsVideoFramePreviewEnabled = true // required to get that bitmap data
+                                                        },
+
+                                                        SourceOptions = new SourceOptions {
+                                                                // record the window by handle
+                                                                RecordingSources = new List<RecordingSourceBase>{new WindowRecordingSource(window.hwnd)}}
+                                                };
+
+
+                                                Recorder recorder = Recorder.CreateRecorder(options);
+
+                                                recorder.OnFrameRecorded += updateWindowPixelData;
 
                                                 var vp8Codec = new VP8Codec();
                                                 var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
 
-                                                var testPatternSource = new VideoTestPatternSource(vp8Codec);
+                                                recorder.OnFrameRecorded += (Object? sender, FrameRecordedEventArgs args) => {
+                                                        // byte[] rawFrameBytes = args.BackBuffer; 
+                                                        // uint durationMs = (uint) args.Duration.TotalMilliseconds;
+                                                        //
+                                                        // encoderEndPoint.ExternalVideoSourceRawSample();
 
-                                                var track = new MediaStreamTrack(testPatternSource.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+                                                        // TODO: send the frame to the encoder end point.
+                                                };
+
+                                                recorder.Record(stream);
+
+
+                                                var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
 
                                                 pc.addTrack(track);
 
-                                                testPatternSource.OnVideoSourceEncodedSample += pc.SendVideo;
-                                                pc.OnVideoFormatsNegotiated += formats => testPatternSource.SetVideoSourceFormat(formats.First());
+                                                encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
+                                                pc.OnVideoFormatsNegotiated += formats => encoderEndPoint.SetVideoSourceFormat(formats.First());
 
-                                                Console.WriteLine("\n\n\nHEY SHHHH THE VIDEO IS STARTING");
-
-                                                await testPatternSource.StartVideo();
-
-                                                Console.WriteLine("\n\n\nHEY LISTEN THE VIDEO STARTED I THINK");
-
-                                                // recorder.Record(stream);
+                                                await encoderEndPoint.StartVideo();
                                 });
                         }
 
