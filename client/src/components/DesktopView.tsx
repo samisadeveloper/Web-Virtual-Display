@@ -28,7 +28,7 @@ function renderComponent(component: Component, videoRef: Ref<HTMLVideoElement>) 
                         height={component.height}
                         muted
                         ref={videoRef} 
-                        style={style} 
+                        style={{...style, borderWidth: 1}} 
                 />
         };
 
@@ -61,6 +61,12 @@ export default function DesktopView() {
         // TODO: get stream by HWND instead of hard coding the first stream
         useEffect(() => {
                 if (streams[0]) {
+                        console.log("we have at least one stream, setting our ref if possible");
+                        if (!videoRef.current) {
+                                console.log("unable to set our ref :(");
+                        } else {
+                                console.log("our ref exists lets set it to the stream");
+                        }
                         if (videoRef.current) videoRef.current.srcObject = streams[0];
                 }
         }, [streams, videoRef.current]);

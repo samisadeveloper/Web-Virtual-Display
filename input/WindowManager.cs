@@ -2,10 +2,11 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using ScreenRecorderLib;
-using SIPSorcery.Media;
 using SIPSorcery.Net;
+using SIPSorceryMedia.Abstractions;
 using Vpx.Net;
-using WebVirtualDisplayClient.rendering;
+
+// using Vpx.Net;
 using WebVirtualDisplayClient.util;
 using static WebVirtualDisplayClient.input.RawWindowHandler;
 using static WebVirtualDisplayClient.util.MouseUtil;
@@ -91,20 +92,6 @@ namespace WebVirtualDisplayClient.input
                         windowMovement?.send(JsonSerializer.Serialize(data));
                 }
 
-                private static void updateWindowPixelData(Object? sender, FrameRecordedEventArgs args) {
-                        FrameBitmapData bitmapData = args.BitmapData;
-
-                        if (bitmapData != null) {
-                                int length = bitmapData.Length;
-
-                                byte[] byteArray = new byte[length];
-                                Marshal.Copy(bitmapData.Data, byteArray, 0, length);
-
-                                int width = bitmapData.Width;
-                                int height = bitmapData.Height;
-                        }
-                }
-
                 public static void updateWindow(WindowData window) {
                         sendWindowMovement(window);
 
@@ -112,46 +99,59 @@ namespace WebVirtualDisplayClient.input
                                 Task.Run(async () => {
                                                 var pc = WebRTCClient.getPeerConnection();
 
-                                                Stream stream = Stream.Null;
+                                                var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
+                                                await encoderEndPoint.StartVideo();
 
-                                                RecorderOptions options = new RecorderOptions {
-                                                        OutputOptions = new OutputOptions {
-                                                                IsVideoFramePreviewEnabled = true // required to get that bitmap data
-                                                        },
+                                                var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+                                                pc.addTrack(track);
 
-                                                        SourceOptions = new SourceOptions {
-                                                                // record the window by handle
-                                                                RecordingSources = new List<RecordingSourceBase>{new WindowRecordingSource(window.hwnd)}}
+                                                // currently diagnosing: why tf doesn't this EVER FIRE????!?!?!?!?!?!?!?
+                                                encoderEndPoint.OnVideoSourceEncodedSample += (duration, sample) => {
+                                                        Console.WriteLine($"\n\n\n[ENCODER OUT] SUCCESS! Packed {sample.Length} compressed bytes.");
                                                 };
 
+                                                encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
+                                                RecorderOptions options = new RecorderOptions {
+                                                        OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
+
+                                                        SourceOptions = new SourceOptions {
+                                                                RecordingSources = new List<RecordingSourceBase>{ new WindowRecordingSource(window.hwnd) }
+                                                        }
+                                                };
 
                                                 Recorder recorder = Recorder.CreateRecorder(options);
 
-                                                recorder.OnFrameRecorded += updateWindowPixelData;
+                                                byte[]? frameBuffer = null;
 
-                                                var vp8Codec = new VP8Codec();
-                                                var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
+                                                recorder.OnFrameRecorded += (sender, args) => {
+                                                        // the data from the recorder is uncompressed 32-bit BGRA
+                                                        // I thought it was compressed but that isn't true
+                                                        // it's important to know
 
-                                                recorder.OnFrameRecorded += (Object? sender, FrameRecordedEventArgs args) => {
-                                                        // byte[] rawFrameBytes = args.BackBuffer; 
-                                                        // uint durationMs = (uint) args.Duration.TotalMilliseconds;
-                                                        //
-                                                        // encoderEndPoint.ExternalVideoSourceRawSample();
+                                                        int stride = args.BitmapData.Stride;
+                                                        int height = args.BitmapData.Height;
+                                                        int width = args.BitmapData.Width;
+                                                        int byteCount = Math.Abs(stride) * height;
 
-                                                        // TODO: send the frame to the encoder end point.
+                                                        if (frameBuffer == null || frameBuffer.Length != byteCount)
+                                                                frameBuffer = new byte[byteCount];
+
+                                                        Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
+
+                                                        var i420 = CodecsUtil.BgraToI420(frameBuffer, width, height, stride);
+                                                        // ^^^ this should be valid I420 but I am not 100% certain idfk
+
+                                                        encoderEndPoint.ExternalVideoSourceRawSample(
+                                                                33, width, height, i420,
+                                                                SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
+                                                        );
                                                 };
 
-                                                recorder.Record(stream);
+                                                pc.OnVideoFormatsNegotiated += formats => {
+                                                        encoderEndPoint.SetVideoSourceFormat(formats.First());
 
-
-                                                var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
-
-                                                pc.addTrack(track);
-
-                                                encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
-                                                pc.OnVideoFormatsNegotiated += formats => encoderEndPoint.SetVideoSourceFormat(formats.First());
-
-                                                await encoderEndPoint.StartVideo();
+                                                        recorder.Record(Stream.Null);                                
+                                                };
                                 });
                         }
 

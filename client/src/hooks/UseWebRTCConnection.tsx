@@ -35,9 +35,12 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
 
     peerConnection.current.ontrack = (event) => {
             const incomingStreams = [...event.streams]; 
+
             if (incomingStreams.length === 0) return;
 
             const targetStream = incomingStreams[incomingStreams.length - 1];
+
+            console.log("incoming stream: ", targetStream.id);
 
             setStreams((prev) => {
                     // If we already have the stream ID, don't change anything in state.
