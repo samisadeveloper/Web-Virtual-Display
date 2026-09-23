@@ -92,6 +92,9 @@ namespace WebVirtualDisplayClient.input
                         windowMovement?.send(JsonSerializer.Serialize(data));
                 }
 
+                // refactor this later please
+                private static int RoundUpToMultipleOf16(int value) => (value + 15) & ~15;
+
                 public static void updateWindow(WindowData window) {
                         sendWindowMovement(window);
 
@@ -104,11 +107,6 @@ namespace WebVirtualDisplayClient.input
 
                                                 var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
                                                 pc.addTrack(track);
-
-                                                // currently diagnosing: why tf doesn't this EVER FIRE????!?!?!?!?!?!?!?
-                                                encoderEndPoint.OnVideoSourceEncodedSample += (duration, sample) => {
-                                                        Console.WriteLine($"\n\n\n[ENCODER OUT] SUCCESS! Packed {sample.Length} compressed bytes.");
-                                                };
 
                                                 encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
                                                 RecorderOptions options = new RecorderOptions {
@@ -124,29 +122,36 @@ namespace WebVirtualDisplayClient.input
                                                 byte[]? frameBuffer = null;
 
                                                 recorder.OnFrameRecorded += (sender, args) => {
-                                                        // the data from the recorder is uncompressed 32-bit BGRA
-                                                        // I thought it was compressed but that isn't true
-                                                        // it's important to know
+                                                        try {
+                                                                int stride = args.BitmapData.Stride;
+                                                                int width = args.BitmapData.Width;
+                                                                int height = args.BitmapData.Height;
 
-                                                        int stride = args.BitmapData.Stride;
-                                                        int height = args.BitmapData.Height;
-                                                        int width = args.BitmapData.Width;
-                                                        int byteCount = Math.Abs(stride) * height;
+                                                                int paddedWidth = RoundUpToMultipleOf16(width);
+                                                                int paddedHeight = RoundUpToMultipleOf16(height);
 
-                                                        if (frameBuffer == null || frameBuffer.Length != byteCount)
-                                                                frameBuffer = new byte[byteCount];
+                                                                int byteCount = Math.Abs(stride) * height;
 
-                                                        Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
+                                                                if (frameBuffer == null || frameBuffer.Length != byteCount)
+                                                                        frameBuffer = new byte[byteCount];
 
-                                                        var i420 = CodecsUtil.BgraToI420(frameBuffer, width, height, stride);
-                                                        // ^^^ this should be valid I420 but I am not 100% certain idfk
+                                                                Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
 
-                                                        encoderEndPoint.ExternalVideoSourceRawSample(
-                                                                33, width, height, i420,
-                                                                SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
-                                                        );
+                                                                // convert at the REAL size — this is what's actually in frameBuffer
+                                                                var i420 = ColorFormatConverter.BgraToI420(frameBuffer, width, height, stride);
+
+                                                                // THEN pad up to the encoder's required size
+                                                                var paddedi420 = ColorFormatConverter.PadI420(i420, width, height, paddedWidth, paddedHeight);
+
+                                                                // and tell the encoder the size that matches paddedi420
+                                                                encoderEndPoint.ExternalVideoSourceRawSample(
+                                                                                33, paddedWidth, paddedHeight, paddedi420,
+                                                                                SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
+                                                                                );
+                                                        } catch (Exception ex) {
+                                                                Console.WriteLine($"AHHJHH MY PANTS THERES SHIT {ex}");
+                                                        }
                                                 };
-
                                                 pc.OnVideoFormatsNegotiated += formats => {
                                                         encoderEndPoint.SetVideoSourceFormat(formats.First());
 
