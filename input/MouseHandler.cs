@@ -43,7 +43,7 @@ class MouseHandler : BackgroundService
 
                                 // TODO: show the mouse
                         } else {
-                                onMouseMoveGlobal?.Invoke(null, point);
+                                // onMouseMoveGlobal?.Invoke(null, point);
                         }
 
                         try {
