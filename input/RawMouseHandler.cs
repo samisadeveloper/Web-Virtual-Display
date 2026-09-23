@@ -23,7 +23,6 @@ class RawMouseHandler {
                 public int deltaY {get; set; }
         }
 
-
         public static event EventHandler<RawMouseInputEventArgs>? rawMouseMovement;
 
         public static void InitializeRawInput(HwndSource source)
