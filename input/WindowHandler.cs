@@ -33,6 +33,8 @@ class WindowHandler : BackgroundService
                 Point point = new Point() {X = x, Y = y};
 
                 if (point.BeyondExtent(extent)) {
+                        // this window should no longer be tracked
+
                         if (!beyondExtent) {
                                 SendMessage(window.cachedData.hwnd, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); 
                                 // let go of the window when its beyond the extent.
@@ -48,17 +50,24 @@ class WindowHandler : BackgroundService
 
                 DragOffset offset = draggedWindow.dragOffset;
 
-                SetWindowPos(draggedWindow.hwnd, IntPtr.Zero, cursor.X - offset.FromLeft, cursor.Y - offset.FromTop, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+                int windowX = cursor.X - offset.FromLeft;
+                int windowY = cursor.Y - offset.FromTop;
+
+                int width = draggedWindow.width;
+                int height = draggedWindow.height;
+
+                int clampedX = int.Clamp(windowX, 0, extent.X - 8);
+
+                SetWindowPos(draggedWindow.hwnd, IntPtr.Zero, clampedX, windowY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
                 WindowData windowData = new WindowData() {
                         hwnd = draggedWindow.hwnd,
-                        x = (cursor.X - offset.FromLeft) - extent.X,
-                        y = (cursor.Y - offset.FromTop),
-                        width = draggedWindow.width,
-                        height = draggedWindow.height,
+                        rawX = windowX,
+                        x = (windowX) - extent.X,
+                        y = (windowY),
+                        width = width,
+                        height = height,
                 };
-
-                // we need to get the capture of the window now
 
                 WindowManager.updateWindow(windowData);
         }
@@ -68,7 +77,9 @@ class WindowHandler : BackgroundService
 
                 GetWindowRect(data.hwnd, ref rect);
 
-                Point point = new Point(){X = rect.Left, Y = rect.Top};
+                int width = rect.Right - rect.Left;
+
+                Point point = new Point(){X = rect.Left + width, Y = rect.Top};
 
                 if (point.BeyondExtent(extent)) beyondExtent = true;
 
