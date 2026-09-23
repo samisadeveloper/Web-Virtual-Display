@@ -14,6 +14,8 @@ namespace WebVirtualDisplayClient
     /// </summary>
     public partial class App
     {
+        private static MouseHookHandler mouseHook = new MouseHookHandler();
+
         // The.NET Generic Host provides dependency injection, configuration, logging, and other services.
         // https://docs.microsoft.com/dotnet/core/extensions/generic-host
         // https://docs.microsoft.com/dotnet/core/extensions/dependency-injection
@@ -47,6 +49,8 @@ namespace WebVirtualDisplayClient
 
             MouseUtil.StartMouseHook();
 
+            mouseHook.Start();
+
             WindowManager.initialize();
             MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
 
@@ -61,6 +65,7 @@ namespace WebVirtualDisplayClient
             await _host.StopAsync();
 
             MouseUtil.StopMouseHook();
+            mouseHook.Stop();
 
             _host.Dispose();
         }

@@ -4,8 +4,6 @@ using System.Text.Json;
 using ScreenRecorderLib;
 using SIPSorcery.Net;
 using Vpx.Net;
-
-// using Vpx.Net;
 using WebVirtualDisplayClient.util;
 using static WebVirtualDisplayClient.input.RawWindowHandler;
 using static WebVirtualDisplayClient.util.MouseUtil;
@@ -19,6 +17,7 @@ namespace WebVirtualDisplayClient.input
 
                 public struct WindowData {
                         public IntPtr hwnd;
+                        public int rawX;
                         public int x;
                         public int y;
                         public int width;
@@ -35,7 +34,8 @@ namespace WebVirtualDisplayClient.input
                         }
                 }
 
-                private static readonly Dictionary<IntPtr, WindowData> windowRegistry = new Dictionary<IntPtr, WindowData>();
+                private static readonly Dictionary<IntPtr, WindowData> WindowRegistry = new Dictionary<IntPtr, WindowData>();
+                public static List<WindowData> Windows => WindowRegistry.Values.ToList();
 
                 private static readonly Dictionary<IntPtr, (Recorder recorder, Vp8NetVideoEncoderEndPoint encoder, RTCPeerConnection pc)> activeStreams = new();
                 // ^^^ should prevent the GC from collecting these prematurely but I am uncertain if they all belong here.
@@ -48,18 +48,26 @@ namespace WebVirtualDisplayClient.input
                         windowMovement = await WebRTCClient.createDataChannel();
 
                         mouseClickEvent += onMouseClick;
+
+                        // we need some way of keeping the window in focus for things like videos and stuff like that
+                        // because even if the window is still technically on screen its focus will get dropped anyways
+                        // I tried setting foreground but that captures the mouse and is annoying
                 }
 
+                /*
+                 * A fatal flaw with this current method is that if the window is right next to the boundary
+                 * then window's actual window manager will start getting in the way
+                 * basically voiding this entire thing
+                */
                 private static void onMouseClick(Object? sender, MouseEventType clickType) {
                         Point globalPoint = MouseHandler.GlobalMousePoint;
                         Point point = new Point(){ X = globalPoint.X - extent.X, Y = globalPoint.Y };
 
                         // find the window which was clicked on
-                        WindowData window = windowRegistry.Values.FirstOrDefault(window => window.isInWindow(point));
+                        WindowData window = WindowRegistry.Values.FirstOrDefault(window => window.isInWindow(point));
 
                         if (window.hwnd == 0) return;
 
-                        // compute the drag offset (this might need changing)
                         DragOffset offset = new DragOffset();
                         offset.FromLeft = point.X - window.x;
                         offset.FromRight = window.width - offset.FromLeft;
@@ -103,9 +111,9 @@ namespace WebVirtualDisplayClient.input
 
                         if (window.hwnd == 0) return;
 
-                        bool isNewWindow = !windowRegistry.ContainsKey(window.hwnd);
+                        bool isNewWindow = !WindowRegistry.ContainsKey(window.hwnd);
 
-                        windowRegistry[window.hwnd] = window;
+                        WindowRegistry[window.hwnd] = window;
 
                         if (isNewWindow) {
                                 Task.Run(async () => {
