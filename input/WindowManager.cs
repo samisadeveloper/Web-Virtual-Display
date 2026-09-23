@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using ScreenRecorderLib;
 using SIPSorcery.Net;
-using SIPSorceryMedia.Abstractions;
 using Vpx.Net;
 
 // using Vpx.Net;
@@ -36,7 +35,11 @@ namespace WebVirtualDisplayClient.input
                         }
                 }
 
-                private static Dictionary<IntPtr, WindowData> windowRegistry = new Dictionary<IntPtr, WindowData>();
+                private static readonly Dictionary<IntPtr, WindowData> windowRegistry = new Dictionary<IntPtr, WindowData>();
+
+                private static readonly Dictionary<IntPtr, (Recorder recorder, Vp8NetVideoEncoderEndPoint encoder, RTCPeerConnection pc)> activeStreams = new();
+                // ^^^ should prevent the GC from collecting these prematurely but I am uncertain if they all belong here.
+                // TODO: we might be able to simply add the encoder, recorder and maybe peer connection to the WindowData struct
 
                 private static Point extent = ScreenExtent.GetScreenExtent();
 
@@ -149,14 +152,17 @@ namespace WebVirtualDisplayClient.input
                                                                                 SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
                                                                                 );
                                                         } catch (Exception ex) {
-                                                                Console.WriteLine($"AHHJHH MY PANTS THERES SHIT {ex}");
+                                                                Console.WriteLine($"Something went wrong while processing frame from recorder {ex.Message}");
                                                         }
                                                 };
+
                                                 pc.OnVideoFormatsNegotiated += formats => {
                                                         encoderEndPoint.SetVideoSourceFormat(formats.First());
 
                                                         recorder.Record(Stream.Null);                                
                                                 };
+
+                                                activeStreams[window.hwnd] = (recorder, encoderEndPoint, pc);
                                 });
                         }
 
