@@ -101,7 +101,11 @@ namespace WebVirtualDisplayClient.input
                 public static void updateWindow(WindowData window) {
                         sendWindowMovement(window);
 
+                        if (window.hwnd == 0) return;
+
                         if (!windowRegistry.ContainsKey(window.hwnd)) {
+                                windowRegistry[window.hwnd] = window;
+
                                 Task.Run(async () => {
                                                 var pc = WebRTCClient.getPeerConnection();
 
@@ -165,8 +169,6 @@ namespace WebVirtualDisplayClient.input
                                                 activeStreams[window.hwnd] = (recorder, encoderEndPoint, pc);
                                 });
                         }
-
-                        windowRegistry[window.hwnd] = window;
                 }
 
                 public static void sendMouseMovement(Point point) {
