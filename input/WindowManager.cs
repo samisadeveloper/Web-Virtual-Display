@@ -103,70 +103,72 @@ namespace WebVirtualDisplayClient.input
 
                         if (window.hwnd == 0) return;
 
-                        if (!windowRegistry.ContainsKey(window.hwnd)) {
-                                windowRegistry[window.hwnd] = window;
+                        bool isNewWindow = !windowRegistry.ContainsKey(window.hwnd);
 
+                        windowRegistry[window.hwnd] = window;
+
+                        if (isNewWindow) {
                                 Task.Run(async () => {
-                                                var pc = WebRTCClient.getPeerConnection();
+                                        var pc = WebRTCClient.getPeerConnection();
 
-                                                var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
-                                                await encoderEndPoint.StartVideo();
+                                        var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
+                                        await encoderEndPoint.StartVideo();
 
-                                                var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
-                                                pc.addTrack(track);
+                                        var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+                                        pc.addTrack(track);
 
-                                                encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
-                                                RecorderOptions options = new RecorderOptions {
-                                                        OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
+                                        encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
+                                        RecorderOptions options = new RecorderOptions {
+                                                OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
 
-                                                        SourceOptions = new SourceOptions {
-                                                                RecordingSources = new List<RecordingSourceBase>{ new WindowRecordingSource(window.hwnd) }
-                                                        }
-                                                };
+                                                SourceOptions = new SourceOptions {
+                                                        RecordingSources = new List<RecordingSourceBase>{ new WindowRecordingSource(window.hwnd) }
+                                                }
+                                        };
 
-                                                Recorder recorder = Recorder.CreateRecorder(options);
+                                        Recorder recorder = Recorder.CreateRecorder(options);
 
-                                                byte[]? frameBuffer = null;
+                                        byte[]? frameBuffer = null;
 
-                                                recorder.OnFrameRecorded += (sender, args) => {
-                                                        try {
-                                                                int stride = args.BitmapData.Stride;
-                                                                int width = args.BitmapData.Width;
-                                                                int height = args.BitmapData.Height;
+                                        recorder.OnFrameRecorded += (sender, args) => {
+                                                try {
+                                                        int stride = args.BitmapData.Stride;
+                                                        int width = args.BitmapData.Width;
+                                                        int height = args.BitmapData.Height;
 
-                                                                int paddedWidth = RoundUpToMultipleOf16(width);
-                                                                int paddedHeight = RoundUpToMultipleOf16(height);
+                                                        int paddedWidth = RoundUpToMultipleOf16(width);
+                                                        int paddedHeight = RoundUpToMultipleOf16(height);
 
-                                                                int byteCount = Math.Abs(stride) * height;
+                                                        int byteCount = Math.Abs(stride) * height;
 
-                                                                if (frameBuffer == null || frameBuffer.Length != byteCount)
-                                                                        frameBuffer = new byte[byteCount];
+                                                        if (frameBuffer == null || frameBuffer.Length != byteCount)
+                                                                frameBuffer = new byte[byteCount];
 
-                                                                Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
+                                                        Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
 
-                                                                // convert at the REAL size — this is what's actually in frameBuffer
-                                                                var i420 = ColorFormatConverter.BgraToI420(frameBuffer, width, height, stride);
+                                                        // convert at the REAL size — this is what's actually in frameBuffer
+                                                        var i420 = ColorFormatConverter.BgraToI420(frameBuffer, width, height, stride);
 
-                                                                // THEN pad up to the encoder's required size
-                                                                var paddedi420 = ColorFormatConverter.PadI420(i420, width, height, paddedWidth, paddedHeight);
+                                                        // THEN pad up to the encoder's required size
+                                                        var paddedi420 = ColorFormatConverter.PadI420(i420, width, height, paddedWidth, paddedHeight);
 
-                                                                // and tell the encoder the size that matches paddedi420
-                                                                encoderEndPoint.ExternalVideoSourceRawSample(
-                                                                                33, paddedWidth, paddedHeight, paddedi420,
-                                                                                SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
-                                                                                );
-                                                        } catch (Exception ex) {
-                                                                Console.WriteLine($"Something went wrong while processing frame from recorder {ex.Message}");
-                                                        }
-                                                };
+                                                        // and tell the encoder the size that matches paddedi420
+                                                        encoderEndPoint.ExternalVideoSourceRawSample(
+                                                                        33, paddedWidth, paddedHeight, paddedi420,
+                                                                        SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
+                                                                        );
+                                                } catch (Exception ex) {
+                                                        Console.WriteLine($"Something went wrong while processing frame from recorder {ex.Message}");
+                                                }
+                                        };
 
-                                                pc.OnVideoFormatsNegotiated += formats => {
-                                                        encoderEndPoint.SetVideoSourceFormat(formats.First());
+                                        pc.OnVideoFormatsNegotiated += formats => {
+                                                encoderEndPoint.SetVideoSourceFormat(formats.First());
 
-                                                        recorder.Record(Stream.Null);                                
-                                                };
+                                                recorder.Record(Stream.Null);                                
+                                        };
 
-                                                activeStreams[window.hwnd] = (recorder, encoderEndPoint, pc);
+                                        activeStreams[window.hwnd] = (recorder, encoderEndPoint, pc);
                                 });
                         }
                 }
