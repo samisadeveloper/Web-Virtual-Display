@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
 using SIPSorcery.Net;
+using WebVirtualDisplayClient.input;
 
 namespace WebVirtualDisplayClient;
 
@@ -70,7 +72,29 @@ class WebRTCClient {
                 peerConnection.onnegotiationneeded += async () => {
                         offer = peerConnection.createOffer();
 
-                        await peerConnection.setLocalDescription(offer);
+                        string rawSdp = offer.sdp;
+
+                        // get the most recent window in the WM
+                        WindowManager.WindowData window = WindowManager.Windows.Last();
+
+                        // make sure the window actually exists so we can 
+                        // embed the window handle in the SDP
+                        if (window.hwnd != 0) {
+                                string msidLine = $"a=mid:1\r\na=msid:{window.hwnd} video-track-0";
+                                string modifiedSdp = rawSdp.Replace("a=mid:1", msidLine);
+
+                                // create a new offer with new SDP
+                                offer = new RTCSessionDescriptionInit {
+                                        type = RTCSdpType.offer,
+                                        sdp = modifiedSdp
+                                };
+
+                                // set this new offer
+                                await peerConnection.setLocalDescription(offer);
+                        } else {
+                                await peerConnection.setLocalDescription(offer);
+                        }
+
                 };
                 
                 offer = peerConnection.createOffer();
