@@ -37,10 +37,6 @@ namespace WebVirtualDisplayClient.input
                 private static readonly Dictionary<IntPtr, WindowData> WindowRegistry = new Dictionary<IntPtr, WindowData>();
                 public static List<WindowData> Windows => WindowRegistry.Values.ToList();
 
-                private static readonly Dictionary<IntPtr, (Recorder recorder, Vp8NetVideoEncoderEndPoint encoder, RTCPeerConnection pc)> activeStreams = new();
-                // ^^^ should prevent the GC from collecting these prematurely but I am uncertain if they all belong here.
-                // TODO: we might be able to simply add the encoder, recorder and maybe peer connection to the WindowData struct
-
                 private static Point extent = ScreenExtent.GetScreenExtent();
 
                 public static async void initialize() {
@@ -103,6 +99,81 @@ namespace WebVirtualDisplayClient.input
                         windowMovement?.send(JsonSerializer.Serialize(data));
                 }
 
+                private static void recordWindow(WindowData window) {
+                        Task.Run(async () => {
+                                var pc = WebRTCClient.getPeerConnection();
+                                
+                                var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
+                                await encoderEndPoint.StartVideo();
+
+                                var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+                                pc.addTrack(track);
+
+                                encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
+
+                                RecorderOptions options = new RecorderOptions {
+                                        OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
+
+                                        SourceOptions = new SourceOptions {
+                                                RecordingSources = new List<RecordingSourceBase>{ new WindowRecordingSource(window.hwnd) }
+                                        }
+                                };
+
+                                Recorder recorder = Recorder.CreateRecorder(options);
+
+                                byte[]? frameBuffer = null;
+
+                                recorder.OnFrameRecorded += (sender, args) => {
+                                        try {
+                                                int stride = args.BitmapData.Stride;
+                                                int width = args.BitmapData.Width;
+                                                int height = args.BitmapData.Height;
+
+                                                int paddedWidth = RoundUpToMultipleOf16(width);
+                                                int paddedHeight = RoundUpToMultipleOf16(height);
+
+                                                int byteCount = Math.Abs(stride) * height;
+
+                                                if (frameBuffer == null || frameBuffer.Length != byteCount)
+                                                        frameBuffer = new byte[byteCount];
+
+                                                Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
+
+                                                // convert at the REAL size — this is what's actually in frameBuffer
+                                                var i420 = ColorFormatConverter.BgraToI420(frameBuffer, width, height, stride);
+
+                                                // THEN pad up to the encoder's required size
+                                                var paddedi420 = ColorFormatConverter.PadI420(i420, width, height, paddedWidth, paddedHeight);
+
+                                                // and tell the encoder the size that matches paddedi420
+                                                encoderEndPoint.ExternalVideoSourceRawSample(
+                                                        33, paddedWidth, paddedHeight, paddedi420,
+                                                        SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
+                                                );
+                                        } catch (Exception ex) {
+                                                Console.WriteLine($"Something went wrong while processing frame from recorder {ex.Message}");
+                                        }
+                                };
+                                
+                                recorder.Record(Stream.Null);
+
+                                pc.OnVideoFormatsNegotiated += formats => {
+                                        encoderEndPoint.SetVideoSourceFormat(formats.First());
+
+                                        // the recording used to start here but for some reason that was causing the GC crashes (I think...)
+                                };
+
+                                try {
+                                        // I am pretty sure the recording library actually stores the recordings in a recording manager
+                                        // so I probably don't need to store the active streams but I can always ad this back
+
+                                        // activeStreams[window.hwnd] = (recorder, encoderEndPoint, track);
+                                } catch (Exception ex) {
+                                        Console.WriteLine($"Failed to save to active streams: {ex.Message}");
+                                }
+                        });
+                }
+
                 // refactor this later please
                 private static int RoundUpToMultipleOf16(int value) => (value + 15) & ~15;
 
@@ -116,68 +187,7 @@ namespace WebVirtualDisplayClient.input
                         WindowRegistry[window.hwnd] = window;
 
                         if (isNewWindow) {
-                                Task.Run(async () => {
-                                        var pc = WebRTCClient.getPeerConnection();
-
-                                        var encoderEndPoint = new Vp8NetVideoEncoderEndPoint();
-                                        await encoderEndPoint.StartVideo();
-
-                                        var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
-                                        pc.addTrack(track);
-
-                                        encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
-                                        RecorderOptions options = new RecorderOptions {
-                                                OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
-
-                                                SourceOptions = new SourceOptions {
-                                                        RecordingSources = new List<RecordingSourceBase>{ new WindowRecordingSource(window.hwnd) }
-                                                }
-                                        };
-
-                                        Recorder recorder = Recorder.CreateRecorder(options);
-
-                                        byte[]? frameBuffer = null;
-
-                                        recorder.OnFrameRecorded += (sender, args) => {
-                                                try {
-                                                        int stride = args.BitmapData.Stride;
-                                                        int width = args.BitmapData.Width;
-                                                        int height = args.BitmapData.Height;
-
-                                                        int paddedWidth = RoundUpToMultipleOf16(width);
-                                                        int paddedHeight = RoundUpToMultipleOf16(height);
-
-                                                        int byteCount = Math.Abs(stride) * height;
-
-                                                        if (frameBuffer == null || frameBuffer.Length != byteCount)
-                                                                frameBuffer = new byte[byteCount];
-
-                                                        Marshal.Copy(args.BitmapData.Data, frameBuffer, 0, byteCount);
-
-                                                        // convert at the REAL size — this is what's actually in frameBuffer
-                                                        var i420 = ColorFormatConverter.BgraToI420(frameBuffer, width, height, stride);
-
-                                                        // THEN pad up to the encoder's required size
-                                                        var paddedi420 = ColorFormatConverter.PadI420(i420, width, height, paddedWidth, paddedHeight);
-
-                                                        // and tell the encoder the size that matches paddedi420
-                                                        encoderEndPoint.ExternalVideoSourceRawSample(
-                                                                        33, paddedWidth, paddedHeight, paddedi420,
-                                                                        SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
-                                                                        );
-                                                } catch (Exception ex) {
-                                                        Console.WriteLine($"Something went wrong while processing frame from recorder {ex.Message}");
-                                                }
-                                        };
-
-                                        pc.OnVideoFormatsNegotiated += formats => {
-                                                encoderEndPoint.SetVideoSourceFormat(formats.First());
-
-                                                recorder.Record(Stream.Null);                                
-                                        };
-
-                                        activeStreams[window.hwnd] = (recorder, encoderEndPoint, pc);
-                                });
+                                recordWindow(window);
                         }
                 }
 
