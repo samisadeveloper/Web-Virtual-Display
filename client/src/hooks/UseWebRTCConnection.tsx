@@ -15,7 +15,7 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
   const dataChannel = useRef<RTCDataChannel | null>(null);
   const currentSdpRef = useRef<string | null>(null);
 
-  const [streams, setStreams] = useState<MediaStream[]>([]);
+  const [streams, setStreams] = useState<Record<string, MediaStream>>({});
   const [status, setStatus] = useState<WebRTCStatus>('Idle');
 
   useEffect(() => {
@@ -41,12 +41,17 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
             const targetStream = incomingStreams[incomingStreams.length - 1];
 
             console.log("incoming stream: ", targetStream.id);
+            
+            setStreams((prevStreams) => {
+                    // 1. If we already have this stream ID, return the exact same object reference!
+                    // This tells React to skip unneeded work and prevents batching overwrites.
+                    if (prevStreams[targetStream.id]) return prevStreams;
 
-            setStreams((prev) => {
-                    // If we already have the stream ID, don't change anything in state.
-                    // The browser is already modifying the tracks inside the object natively.
-                    if (prev.some(s => s.id === targetStream.id)) return prev;
-                    return [...prev, targetStream];
+                    // 2. Otherwise, add it cleanly
+                    return {
+                            ...prevStreams,
+                            [targetStream.id]: targetStream
+                    };
             });
     };
 
