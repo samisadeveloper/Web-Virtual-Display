@@ -88,6 +88,74 @@ class RawMouseHandler {
                 }
         }
 
+        public static void HideCursor() {
+                uint[] cursorIds = {
+                        32512, // OCR_NORMAL   (Default windows cursor)
+                        32644, // OCR_SIZEWE   (Horizontal Resize)
+                        32645, // OCR_SIZENS   (Vertical Resize)
+                        32642, // OCR_SIZENWSE (Diagonal Resize)
+                        32643, // OCR_SIZENESW (Diagonal Resize)
+                        32646, // OCR_SIZEALL  (Move/Size All)
+                        32513, // OCR_IBEAM    (Text cursor)
+                        32649  // OCR_HAND     (Link hand)
+                };
+
+                foreach (uint id in cursorIds)
+                {
+                        // 1. Generate a brand new, unique blank cursor mask
+                        IntPtr hAndMask = CreateBitmap(1, 1, 1, 1, Marshal.AllocHGlobal(1));
+                        IntPtr hXorMask = CreateBitmap(1, 1, 1, 1, Marshal.AllocHGlobal(1));
+
+                        ICONINFO iconInfo = new ICONINFO
+                        {
+                                fIcon = false,
+                                xHotspot = 0,
+                                yHotspot = 0,
+                                hbmMask = hAndMask,
+                                hbmColor = hXorMask
+                        };
+
+                        IntPtr blankCursor = CreateIconIndirect(ref iconInfo);
+
+                        // 2. Overwrite this specific system cursor ID
+                        if (blankCursor != IntPtr.Zero)
+                        {
+                                SetSystemCursor(blankCursor, id);
+                        }
+                }
+        }
+
+        public static void RestoreCursor() {
+                // Forces Windows to reload the default cursors from the registry
+                SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, 0);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ICONINFO
+        {
+                public bool fIcon;
+                public int xHotspot;
+                public int yHotspot;
+                public IntPtr hbmMask;
+                public IntPtr hbmColor;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr CreateIconIndirect(ref ICONINFO piconinfo);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetSystemCursor(IntPtr hcur, uint id);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern IntPtr CreateBitmap(int nWidth, int nHeight, uint nPlanes, uint nBitCount, IntPtr lpBits);
+
+        // OCR_NORMAL is the standard Windows Arrow cursor ID
+        private const uint OCR_NORMAL = 32512;
+        private const uint SPI_SETCURSORS = 0x0057;
+
         [StructLayout(LayoutKind.Sequential)]
         private struct RAWINPUTDEVICE
         {

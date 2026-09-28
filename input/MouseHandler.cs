@@ -32,7 +32,7 @@ class MouseHandler : BackgroundService
                                         lastMousePoint = point;
                                         _globalMousePoint = point;
 
-                                        // TODO: hide the mouse
+                                        HideCursor();
                                 } 
 
                                 enableRawInput = true; // enable it
@@ -41,9 +41,7 @@ class MouseHandler : BackgroundService
 
                                 enableRawInput = false;
 
-                                // TODO: show the mouse
-                        } else {
-                                // onMouseMoveGlobal?.Invoke(null, point);
+                                RestoreCursor();
                         }
 
                         try {
