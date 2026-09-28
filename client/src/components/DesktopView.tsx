@@ -17,15 +17,7 @@ function Window({component, style, media}: {component: Component, style: CSSProp
 
         useEffect(() => {
                 if (media) {
-                        console.log("we have at least one stream, setting our ref if possible");
-                        if (!videoRef.current) {
-                                console.log("unable to set our ref :(");
-                        } else {
-                                console.log("our ref exists lets set it to the stream");
-                        }
                         if (videoRef.current) videoRef.current.srcObject = media;
-                } else {
-                        console.log("yeah no stream sorry bud can't do god damn anyhthing without a stream")
                 }
         }, [media, videoRef.current]);
 
@@ -93,10 +85,11 @@ export default function DesktopView() {
                 <div>
                         {Object.values(componentConfigs).map((config) => {
                                 const stream = getStream(streams, config);
+
                                 const renderedComponent = renderComponent(config, stream);
 
                                 return (
-                                        <div key={config.id}>
+                                        <div>
                                                 {renderedComponent}
                                         </div>
                                 );
