@@ -107,9 +107,13 @@ namespace WebVirtualDisplayClient.input
                                 await encoderEndPoint.StartVideo();
 
                                 var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+                                WebRTCClient.ssrcToHwnd[track.Ssrc] = window.hwnd.ToString();
                                 pc.addTrack(track);
 
-                                encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
+                                var stream = pc.VideoStreamList.Last();
+                                encoderEndPoint.OnVideoSourceEncodedSample += (duration, sample) => stream.SendVideo(duration, sample);
+
+                                // encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
 
                                 RecorderOptions options = new RecorderOptions {
                                         OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },

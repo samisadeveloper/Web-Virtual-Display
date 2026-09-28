@@ -7,12 +7,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
 using SIPSorcery.Net;
-using WebVirtualDisplayClient.input;
 
 namespace WebVirtualDisplayClient;
 
 class WebRTCClient {
         private static RTCPeerConnection peerConnection = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer>() });
+        public static readonly ConcurrentDictionary<uint, string> ssrcToHwnd = new();
+
         private static RTCSessionDescriptionInit? offer;
 
         private static ConcurrentQueue<String> remoteIceCandidates = new ConcurrentQueue<string>();
@@ -68,35 +69,33 @@ class WebRTCClient {
                         }
                 };
 
-                
                 peerConnection.onnegotiationneeded += async () => {
                         offer = peerConnection.createOffer();
 
-                        string rawSdp = offer.sdp;
+                        var sections = offer.sdp.Split(new[] { "\r\nm=" }, StringSplitOptions.None);
 
-                        // get the most recent window in the WM
-                        WindowManager.WindowData window = WindowManager.Windows.Last();
+                        // section 0 is the session header, the rest are m-lines
+                        for (int i = 1; i < sections.Length; i++) {
+                                if (sections[i].Contains("a=msid:")) continue;
 
-                        // make sure the window actually exists so we can 
-                        // embed the window handle in the SDP
-                        if (window.hwnd != 0) {
-                                string msidLine = $"a=mid:1\r\na=msid:{window.hwnd} video-track-0";
-                                string modifiedSdp = rawSdp.Replace("a=mid:1", msidLine);
+                                var ssrcMatch = Regex.Match(sections[i], @"a=ssrc:(\d+)");
+                                if (!ssrcMatch.Success) continue;
 
-                                // create a new offer with new SDP
-                                offer = new RTCSessionDescriptionInit {
-                                        type = RTCSdpType.offer,
-                                        sdp = modifiedSdp
-                                };
+                                uint ssrc = uint.Parse(ssrcMatch.Groups[1].Value);
+                                if (!ssrcToHwnd.TryGetValue(ssrc, out var hwnd)) continue;
 
-                                // set this new offer
-                                await peerConnection.setLocalDescription(offer);
-                        } else {
-                                await peerConnection.setLocalDescription(offer);
+                                // insert the msid line just before the first a=ssrc line
+                                sections[i] = sections[i].Insert(ssrcMatch.Index, $"a=msid:{hwnd} video-{hwnd}\r\n");
                         }
 
-                };
-                
+                        offer = (new RTCSessionDescriptionInit {
+                                type = RTCSdpType.offer,
+                                sdp = string.Join("\r\nm=", sections)
+                        });
+
+                        await peerConnection.setLocalDescription(offer);
+                };                
+
                 offer = peerConnection.createOffer();
 
                 await peerConnection.setLocalDescription(offer);
