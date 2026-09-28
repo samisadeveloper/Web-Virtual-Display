@@ -86,7 +86,9 @@ class WindowHandler : BackgroundService
                 draggedWindow = data;
         }
 
-        public void onMouseClick(Object? sender, MouseEventType type) {
+        public void onMouseClick(Object? sender, MouseEventArgs mouseArgs) {
+                MouseEventType type = mouseArgs.type;
+
                 if (type.Equals(MouseEventType.RELEASED)) {
                                 draggedWindow = default;
                                 beyondExtent = false;

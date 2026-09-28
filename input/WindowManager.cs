@@ -50,12 +50,9 @@ namespace WebVirtualDisplayClient.input
                         // I tried setting foreground but that captures the mouse and is annoying
                 }
 
-                /*
-                 * A fatal flaw with this current method is that if the window is right next to the boundary
-                 * then window's actual window manager will start getting in the way
-                 * basically voiding this entire thing
-                */
-                private static void onMouseClick(Object? sender, MouseEventType clickType) {
+                private static void onMouseClick(Object? sender, MouseUtil.MouseEventArgs mouseArgs) {
+                        MouseEventType clickType = mouseArgs.type;
+
                         Point globalPoint = MouseHandler.GlobalMousePoint;
                         Point point = new Point(){ X = globalPoint.X - extent.X, Y = globalPoint.Y };
 
@@ -76,11 +73,22 @@ namespace WebVirtualDisplayClient.input
                                 height = window.height,
                         };
 
-                        if (clickType.Equals(MouseEventType.PRESSED)) {
-                                RawWindowHandler.rawWindowHeld?.Invoke(null, windowData);
-                        } else if (clickType.Equals(MouseEventType.RELEASED)) {
-                                RawWindowHandler.rawWindowReleased?.Invoke(null, windowData);
+                        // get mouse position relative to the window
+                        Point relativePoint = new Point() { X = point.X - window.x, Y = point.Y - window.y };
+
+                        // TODO: use a different number instead of a harcdoded one, it should scale depending on the monitor DPI or whatever
+                        if (relativePoint.Y < 50) {
+                                if (clickType.Equals(MouseEventType.PRESSED)) {
+                                        RawWindowHandler.rawWindowHeld?.Invoke(null, windowData);
+                                } else if (clickType.Equals(MouseEventType.RELEASED)) {
+                                        RawWindowHandler.rawWindowReleased?.Invoke(null, windowData);
+                                }
                         }
+
+                        // TODO: there is a bug where you cannot pick up a window at all due to another window being ontop of it
+                        // TODO: scrolling actually does work but it's quite finicky and it seems like it requires the scrollbox to be within window boundaries
+                        ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
+
                 }
 
                 private static void sendWindowMovement(WindowData window) {
@@ -107,13 +115,13 @@ namespace WebVirtualDisplayClient.input
                                 await encoderEndPoint.StartVideo();
 
                                 var track = new MediaStreamTrack(encoderEndPoint.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+
                                 WebRTCClient.ssrcToHwnd[track.Ssrc] = window.hwnd.ToString();
+
                                 pc.addTrack(track);
 
                                 var stream = pc.VideoStreamList.Last();
                                 encoderEndPoint.OnVideoSourceEncodedSample += (duration, sample) => stream.SendVideo(duration, sample);
-
-                                // encoderEndPoint.OnVideoSourceEncodedSample += pc.SendVideo;
 
                                 RecorderOptions options = new RecorderOptions {
                                         OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
@@ -163,18 +171,7 @@ namespace WebVirtualDisplayClient.input
 
                                 pc.OnVideoFormatsNegotiated += formats => {
                                         encoderEndPoint.SetVideoSourceFormat(formats.First());
-
-                                        // the recording used to start here but for some reason that was causing the GC crashes (I think...)
                                 };
-
-                                try {
-                                        // I am pretty sure the recording library actually stores the recordings in a recording manager
-                                        // so I probably don't need to store the active streams but I can always ad this back
-
-                                        // activeStreams[window.hwnd] = (recorder, encoderEndPoint, track);
-                                } catch (Exception ex) {
-                                        Console.WriteLine($"Failed to save to active streams: {ex.Message}");
-                                }
                         });
                 }
 

@@ -25,19 +25,39 @@ class MouseUtil {
                 public float Distance(Point point) { return Vector2.DistanceSquared(new Vector2(point.X, point.Y), new Vector2(this.X, this.Y)); }
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSLLHOOKSTRUCT
+        {
+                public Point pt;
+                public uint mouseData;
+                public uint flags;
+                public uint time;
+                public IntPtr dwExtraInfo;
+        }
+
+        private const uint MK_LBUTTON = 0x0001; // make left mouse button
+
         private const int WH_MOUSE_LL = 14;
         private const int WM_LBUTTONUP = 0x0202; // Left button up
         private const int WM_LBUTTONDOWN = 0x0201; // Left button down
+        private const uint WM_MOUSEWHEEL = 0x020A; // mouse wheel
+        private const uint WM_VSCROLL = 0x0115; // scroll
 
         private static LowLevelMouseProc _proc = HookCallback;
         private static IntPtr _hookID = IntPtr.Zero;
 
         public enum MouseEventType {
                 PRESSED,
-                RELEASED
+                RELEASED,
+                SCROLL,
         }
 
-        public static EventHandler<MouseEventType>? mouseClickEvent;
+        public struct MouseEventArgs {
+                public MouseEventType type;
+                public short delta;
+        }
+
+        public static EventHandler<MouseEventArgs>? mouseClickEvent;
 
         public static void StartMouseHook()
         {
@@ -64,15 +84,58 @@ class MouseUtil {
         {
                 // Check if the event is valid and matches Mouse1 Release
                 if (nCode >= 0) {
-                        if (wParam == (IntPtr) WM_LBUTTONUP) {
-                                mouseClickEvent?.Invoke(null, MouseEventType.RELEASED);
-                        } else if (wParam == (IntPtr) WM_LBUTTONDOWN) {
-                                mouseClickEvent?.Invoke(null, MouseEventType.PRESSED);
+                        switch ((uint) wParam) {
+                                case WM_LBUTTONUP:
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.RELEASED});
+
+                                        break;
+                                case WM_LBUTTONDOWN:
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.PRESSED});
+
+                                        break;
+                                case WM_MOUSEWHEEL:
+                                        MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+
+                                        short delta = (short)((hookStruct.mouseData >> 16) & 0xFFFF);
+
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.SCROLL, delta = delta});
+
+                                        break;
                         }
                 }
 
                 
                 return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        public static void ClickWindowAt(IntPtr hWnd, Point point, MouseEventArgs mouseArgs) {
+                MouseEventType type = mouseArgs.type;
+        
+                // Pack coordinates into a single 32-bit integer (LPARAM)
+                // X-coordinate goes in the low-order word, Y-coordinate in the high-order word
+                IntPtr lParam = (IntPtr)((point.Y << 16) | (point.X & 0xFFFF));
+                IntPtr wParam = (IntPtr)MK_LBUTTON;
+
+                if (type.Equals(MouseEventType.PRESSED)) {
+                        PostMessage(hWnd, WM_LBUTTONDOWN, wParam, lParam);
+                } else if (type.Equals(MouseEventType.RELEASED)) {
+                        PostMessage(hWnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
+                } else if (type.Equals(MouseEventType.SCROLL)) {
+                        short delta = mouseArgs.delta;
+
+                        wParam = new IntPtr((delta << 16) & 0xFFFF0000);
+
+                        // INFO: the window seems to need some sort of focus before actually scrolling
+                        // I can try testing this with other windows
+                        //
+                        // Edit: it seems like the window needs focus plus it needs to be actually on screen
+                        // Just a tiny sliver counts but it's not as leniant as video playback
+                        // I may have to hide the window using dwmapi.dll and "cloak" it
+                        PostMessage(hWnd, WM_MOUSEWHEEL, wParam, lParam);
+                }
         }
 
         [DllImport("user32.dll")]
