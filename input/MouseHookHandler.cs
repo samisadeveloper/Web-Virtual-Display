@@ -44,6 +44,8 @@ public class MouseHookHandler {
                                         if (hookStruct.pt.x >= rect.Left && hookStruct.pt.x <= rect.Right && hookStruct.pt.y >= rect.Top && hookStruct.pt.y <= rect.Bottom) {
                                                 MouseUtil.mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.PRESSED});
 
+                                                Console.WriteLine("Blocking input");
+
                                                 return (IntPtr) 1; // swallow click event
                                         }
                                 }

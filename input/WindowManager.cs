@@ -15,6 +15,10 @@ namespace WebVirtualDisplayClient.input
                 private static SIPSorcery.Net.RTCDataChannel? mouseUpdate;
                 private static SIPSorcery.Net.RTCDataChannel? windowMovement;
 
+                [DllImport("user32.dll")]
+                [return: MarshalAs(UnmanagedType.Bool)]
+                private static extern bool SetForegroundWindow(IntPtr hWnd);
+
                 public struct WindowData {
                         public IntPtr hwnd;
                         public int rawX;
@@ -44,10 +48,6 @@ namespace WebVirtualDisplayClient.input
                         windowMovement = await WebRTCClient.createDataChannel();
 
                         mouseClickEvent += onMouseClick;
-
-                        // we need some way of keeping the window in focus for things like videos and stuff like that
-                        // because even if the window is still technically on screen its focus will get dropped anyways
-                        // I tried setting foreground but that captures the mouse and is annoying
                 }
 
                 private static void onMouseClick(Object? sender, MouseUtil.MouseEventArgs mouseArgs) {
@@ -69,6 +69,7 @@ namespace WebVirtualDisplayClient.input
                         WindowCachedTrackData windowData = new WindowCachedTrackData() {
                                 dragOffset = offset,
                                 hwnd = window.hwnd,
+                                // window is fully beyond extent and should be virtual
                                 width = window.width,
                                 height = window.height,
                         };
@@ -87,12 +88,23 @@ namespace WebVirtualDisplayClient.input
 
                         // TODO: there is a bug where you cannot pick up a window at all due to another window being ontop of it
                         // TODO: scrolling actually does work but it's quite finicky and it seems like it requires the scrollbox to be within window boundaries
-                        ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
 
+                        if (mouseArgs.type.Equals(MouseEventType.SCROLL)) {
+                                SetCursorPos(120, 120);
+                                SetForegroundWindow(window.hwnd);
+
+                                WindowHandler.SetWindowPos(window.hwnd, IntPtr.Zero, 0, 0, 0, 0, WindowHandler.SWP_NOSIZE | WindowHandler.SWP_NOACTIVATE);
+                                
+                                // ClickWindowAt(window.hwnd, new Point(){X = 120, Y = 120}, mouseArgs);
+                        } else {
+                                ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
+                        }
                 }
 
                 private static void sendWindowMovement(WindowData window) {
                         // include the width, height and position of the window AND make sure to include the HWND so it can be updated
+
+                        if (window.hwnd == IntPtr.Zero) return;
 
                         var data = new {
                                 channel = "window",
@@ -127,7 +139,10 @@ namespace WebVirtualDisplayClient.input
                                         OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
 
                                         SourceOptions = new SourceOptions {
-                                                RecordingSources = new List<RecordingSourceBase>{ new WindowRecordingSource(window.hwnd) }
+                                                RecordingSources = new List<RecordingSourceBase>{ 
+                                                new WindowRecordingSource(window.hwnd) {
+                                                        IsBorderRequired = false
+                                                }}
                                         }
                                 };
 

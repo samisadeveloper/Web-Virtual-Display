@@ -12,7 +12,7 @@ class WindowHandler : BackgroundService
         private static Point extent = ScreenExtent.GetScreenExtent();
         private static WindowCachedTrackData draggedWindow;
         private static bool beyondExtent = false;
-        
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
                 MouseHandler.onMouseMoveGlobal += onMouseMoveGlobal;
@@ -58,6 +58,12 @@ class WindowHandler : BackgroundService
 
                 int clampedX = int.Clamp(windowX, 0, extent.X - 8);
 
+                if (windowX > extent.X) {
+                        LayeredWindow.Apply(draggedWindow.hwnd, 255, true);
+                } else {
+                        LayeredWindow.Reset(draggedWindow.hwnd);
+                }
+
                 SetWindowPos(draggedWindow.hwnd, IntPtr.Zero, clampedX, windowY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
                 WindowData windowData = new WindowData() {
@@ -90,19 +96,19 @@ class WindowHandler : BackgroundService
                 MouseEventType type = mouseArgs.type;
 
                 if (type.Equals(MouseEventType.RELEASED)) {
-                                draggedWindow = default;
-                                beyondExtent = false;
+                        draggedWindow = default;
+                        beyondExtent = false;
                 }
         }
 
         [DllImport("user32.dll", SetLastError = true)]
-        static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         // Flags to optimize performance and prevent unintended changes
-        const uint SWP_NOSIZE = 0x0001;       // Ignore the cx and cy parameters (keep current size)
-        const uint SWP_NOZORDER = 0x0004;     // Retain the current Z order (don't bring to front/back)
-        const uint SWP_NOACTIVATE = 0x0010;   // Do not activate the window (keeps focus on your app)
-        const uint SWP_FRAMECHANGED = 0x0020; // Forces the window to redraw its borders (useful if styles changed)
+        public const uint SWP_NOSIZE = 0x0001;       // Ignore the cx and cy parameters (keep current size)
+        public const uint SWP_NOZORDER = 0x0004;     // Retain the current Z order (don't bring to front/back)
+        public const uint SWP_NOACTIVATE = 0x0010;   // Do not activate the window (keeps focus on your app)
+        public const uint SWP_FRAMECHANGED = 0x0020; // Forces the window to redraw its borders (useful if styles changed)
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
