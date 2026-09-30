@@ -26,7 +26,7 @@ class WindowHandler : BackgroundService
                 });
         }
 
-        public void onWindowMove(Object? sender, WindowTrackData window) {
+        private void onWindowMove(Object? sender, WindowTrackData window) {
                 int x = window.x + window.cachedData.width;
                 int y = window.y + window.cachedData.height;
 
@@ -44,7 +44,7 @@ class WindowHandler : BackgroundService
                 }
         }
 
-        public void onMouseMoveGlobal(Object? sender, Point cursor) {
+        private void onMouseMoveGlobal(Object? sender, Point cursor) {
                 if (draggedWindow.hwnd == 0) return;
                 if (!beyondExtent) return;
 
@@ -56,15 +56,13 @@ class WindowHandler : BackgroundService
                 int width = draggedWindow.width;
                 int height = draggedWindow.height;
 
-                int clampedX = int.Clamp(windowX, 0, extent.X - 8);
-
                 if (windowX > extent.X) {
-                        LayeredWindow.Apply(draggedWindow.hwnd, 255, true);
+                        LayeredWindow.Apply(draggedWindow.hwnd, 1, false);
                 } else {
                         LayeredWindow.Reset(draggedWindow.hwnd);
                 }
 
-                SetWindowPos(draggedWindow.hwnd, IntPtr.Zero, clampedX, windowY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+                MoveWindow(draggedWindow.hwnd, new Point(){X = windowX, Y = windowY});
 
                 WindowData windowData = new WindowData() {
                         hwnd = draggedWindow.hwnd,
@@ -78,7 +76,7 @@ class WindowHandler : BackgroundService
                 WindowManager.updateWindow(windowData);
         }
 
-        public void onWindowHeld(Object? sender, WindowCachedTrackData data) {
+        private void onWindowHeld(Object? sender, WindowCachedTrackData data) {
                 RECT rect = new RECT();
 
                 GetWindowRect(data.hwnd, ref rect);
@@ -92,7 +90,7 @@ class WindowHandler : BackgroundService
                 draggedWindow = data;
         }
 
-        public void onMouseClick(Object? sender, MouseEventArgs mouseArgs) {
+        private void onMouseClick(Object? sender, MouseEventArgs mouseArgs) {
                 MouseEventType type = mouseArgs.type;
 
                 if (type.Equals(MouseEventType.RELEASED)) {
@@ -101,8 +99,14 @@ class WindowHandler : BackgroundService
                 }
         }
 
+        public static void MoveWindow(IntPtr hwnd, Point point) {
+                int clampedX = int.Clamp(point.X, 0, extent.X - 8);
+
+                SetWindowPos(hwnd, IntPtr.Zero, clampedX, point.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         // Flags to optimize performance and prevent unintended changes
         public const uint SWP_NOSIZE = 0x0001;       // Ignore the cx and cy parameters (keep current size)

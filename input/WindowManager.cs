@@ -87,15 +87,19 @@ namespace WebVirtualDisplayClient.input
                         }
 
                         // TODO: there is a bug where you cannot pick up a window at all due to another window being ontop of it
-                        // TODO: scrolling actually does work but it's quite finicky and it seems like it requires the scrollbox to be within window boundaries
 
                         if (mouseArgs.type.Equals(MouseEventType.SCROLL)) {
-                                SetCursorPos(120, 120);
                                 SetForegroundWindow(window.hwnd);
 
-                                WindowHandler.SetWindowPos(window.hwnd, IntPtr.Zero, 0, 0, 0, 0, WindowHandler.SWP_NOSIZE | WindowHandler.SWP_NOACTIVATE);
+                                // first capture the window position
+                                int x = window.rawX;
+                                int y = window.y;
+
+                                WindowHandler.MoveWindow(window.hwnd, new Point(){X = 0, Y = 0});
                                 
-                                // ClickWindowAt(window.hwnd, new Point(){X = 120, Y = 120}, mouseArgs);
+                                ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
+
+                                WindowHandler.MoveWindow(window.hwnd, new Point(){X = x, Y = y});
                         } else {
                                 ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
                         }
