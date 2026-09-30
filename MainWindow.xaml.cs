@@ -5,10 +5,6 @@ using WebVirtualDisplayClient.input;
 namespace WebVirtualDisplayClient {
     public partial class MainWindow : Window
     {
-        public MainWindow()
-        {
-        }
-
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
