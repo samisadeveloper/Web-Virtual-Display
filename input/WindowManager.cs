@@ -79,9 +79,9 @@ namespace WebVirtualDisplayClient.input
 
                         // TODO: use a different number instead of a harcdoded one, it should scale depending on the monitor DPI or whatever
                         if (relativePoint.Y < 50) {
-                                if (clickType.Equals(MouseEventType.PRESSED)) {
+                                if (clickType.Equals(MouseEventType.LEFT_PRESSED)) {
                                         RawWindowHandler.rawWindowHeld?.Invoke(null, windowData);
-                                } else if (clickType.Equals(MouseEventType.RELEASED)) {
+                                } else if (clickType.Equals(MouseEventType.LEFT_RELEASED)) {
                                         RawWindowHandler.rawWindowReleased?.Invoke(null, windowData);
                                 }
                         }

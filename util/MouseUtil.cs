@@ -38,8 +38,13 @@ class MouseUtil {
         private const uint MK_LBUTTON = 0x0001; // make left mouse button
 
         private const int WH_MOUSE_LL = 14;
+
         private const int WM_LBUTTONUP = 0x0202; // Left button up
         private const int WM_LBUTTONDOWN = 0x0201; // Left button down
+
+        private const int WM_RBUTTONUP = 0x0205; // right button up
+        private const int WM_RBUTTONDOWN = 0x0204; // right button down
+
         private const uint WM_MOUSEWHEEL = 0x020A; // mouse wheel
         private const uint WM_VSCROLL = 0x0115; // scroll
 
@@ -47,8 +52,10 @@ class MouseUtil {
         private static IntPtr _hookID = IntPtr.Zero;
 
         public enum MouseEventType {
-                PRESSED,
-                RELEASED,
+                LEFT_PRESSED,
+                LEFT_RELEASED,
+                RIGHT_PRESSED,
+                RIGHT_RELEASED,
                 SCROLL,
         }
 
@@ -86,13 +93,25 @@ class MouseUtil {
                 if (nCode >= 0) {
                         switch ((uint) wParam) {
                                 case WM_LBUTTONUP:
-                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.RELEASED});
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.LEFT_RELEASED});
 
                                         break;
+
                                 case WM_LBUTTONDOWN:
-                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.PRESSED});
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.LEFT_PRESSED});
 
                                         break;
+
+                                case WM_RBUTTONUP:
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.RIGHT_RELEASED});
+
+                                        break;
+
+                                case WM_RBUTTONDOWN:
+                                        mouseClickEvent?.Invoke(null, new MouseEventArgs {type = MouseEventType.RIGHT_PRESSED});
+
+                                        break;
+
                                 case WM_MOUSEWHEEL:
                                         MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
 
@@ -119,22 +138,31 @@ class MouseUtil {
                 IntPtr lParam = (IntPtr)((point.Y << 16) | (point.X & 0xFFFF));
                 IntPtr wParam = (IntPtr)MK_LBUTTON;
 
-                if (type.Equals(MouseEventType.PRESSED)) {
-                        PostMessage(hWnd, WM_LBUTTONDOWN, wParam, lParam);
-                } else if (type.Equals(MouseEventType.RELEASED)) {
-                        PostMessage(hWnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
-                } else if (type.Equals(MouseEventType.SCROLL)) {
-                        short delta = mouseArgs.delta;
+                switch (type) {
+                        case MouseEventType.LEFT_PRESSED:
+                                PostMessage(hWnd, WM_LBUTTONDOWN, wParam, lParam);
+                                break;
 
-                        wParam = new IntPtr((delta << 16) & 0xFFFF0000);
+                        case MouseEventType.LEFT_RELEASED:
+                                PostMessage(hWnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
+                                break;
 
-                        // INFO: the window seems to need some sort of focus before actually scrolling
-                        // I can try testing this with other windows
-                        //
-                        // Edit: it seems like the window needs focus plus it needs to be actually on screen
-                        // Just a tiny sliver counts but it's not as leniant as video playback
-                        // I may have to hide the window using dwmapi.dll and "cloak" it
-                        PostMessage(hWnd, WM_MOUSEWHEEL, wParam, lParam);
+                        case MouseEventType.RIGHT_PRESSED:
+                                PostMessage(hWnd, WM_RBUTTONDOWN, wParam, lParam);
+                                break;
+
+                        case MouseEventType.RIGHT_RELEASED:
+                                PostMessage(hWnd, WM_RBUTTONUP, IntPtr.Zero, lParam);
+                                break;
+
+                        case MouseEventType.SCROLL:
+                                short delta = mouseArgs.delta;
+
+                                wParam = new IntPtr((delta << 16) & 0xFFFF0000);
+
+                                PostMessage(hWnd, WM_MOUSEWHEEL, wParam, lParam);
+
+                                break;
                 }
         }
 

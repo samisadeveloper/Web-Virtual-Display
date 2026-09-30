@@ -93,7 +93,7 @@ class WindowHandler : BackgroundService
         private void onMouseClick(Object? sender, MouseEventArgs mouseArgs) {
                 MouseEventType type = mouseArgs.type;
 
-                if (type.Equals(MouseEventType.RELEASED)) {
+                if (type.Equals(MouseEventType.LEFT_RELEASED)) {
                         draggedWindow = default;
                         beyondExtent = false;
                 }
