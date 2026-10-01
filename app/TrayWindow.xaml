@@ -1,0 +1,52 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:av="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="av"
+    x:Class="WebVirtualDisplayClient.app.TrayWindow"
+    Title="Web Virtual Display"
+    Width="332" Height="794"
+    ShowInTaskbar="False"
+    Background="#FF333435"
+    FontFamily="Google Sans Code Proportional, Segoe UI" WindowStyle="None">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                ResizeBorderThickness="1"
+                GlassFrameThickness="1"
+                UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0">
+            <StackPanel Width="256">
+                <ui:TextBlock TextWrapping="Wrap" Text="Status" FontSize="36" VerticalAlignment="Center" Foreground="White" HorizontalAlignment="Center"/>
+                <ui:TextBlock TextWrapping="Wrap" Text="Disconnected" FontSize="20" Foreground="#FFD0CFCF" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- QR area -->
+        <StackPanel Grid.Row="1"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center">
+            <Border Width="250" Height="250"
+                    CornerRadius="15" BorderThickness="5,5,5,5" Background="White">
+                <Border.Effect>
+                    <DropShadowEffect Color="#FF333131" RenderingBias="Quality" ShadowDepth="15" Direction="-30" BlurRadius="50" Opacity="0.45"/>
+                </Border.Effect>
+                <!-- put your QR Image here -->
+            </Border>
+            <DockPanel Height="25" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,15,0,14.6">
+                <ui:SymbolIcon Width="20" Symbol="Communication20" Height="20" VerticalAlignment="Center" Foreground="#FF2BBFE6"/>
+                <ui:TextBlock TextWrapping="Wrap" Text="192.168.0.201:5000" Foreground="#FF2BBFE6" FontSize="18" Width="158" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            </DockPanel>
+            <ui:CardAction Content="Copy to clipboard" Height="57" Width="210" BorderThickness="1,1,1,1"/>
+        </StackPanel>
+    </Grid>
+</Window>
