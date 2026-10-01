@@ -15,8 +15,6 @@ namespace WebVirtualDisplayClient
     /// </summary>
     public partial class App
     {
-        public static ClientWindow? clientWindow;
-
         private static MouseHookHandler mouseHook = new MouseHookHandler();
 
         // The.NET Generic Host provides dependency injection, configuration, logging, and other services.
@@ -33,7 +31,7 @@ namespace WebVirtualDisplayClient
                     services.AddHostedService<MouseHandler>();
                     services.AddHostedService<WindowHandler>();
                     services.AddTransient<MainWindow>();
-                    services.AddTransient<ClientWindow>();
+                    services.AddTransient<TrayWindow>();
             }).Build();
 
         /// <summary>
@@ -62,11 +60,18 @@ namespace WebVirtualDisplayClient
             mainWindow.Show();
             mainWindow.Hide();
 
-            TrayApp app = new TrayApp();
-            app.Initialize(mainWindow);
+            TrayWindow trayWindow = _host.Services.GetRequiredService<TrayWindow>();
+            App.Current.MainWindow = trayWindow;
 
-            clientWindow = _host.Services.GetRequiredService<ClientWindow>();
-            clientWindow.InitializeComponent();
+            trayWindow.InitializeComponent();
+
+            trayWindow.PositionNearTray();
+
+            trayWindow.Show();
+            trayWindow.Hide();
+
+            TrayApp app = new TrayApp();
+            app.Initialize(trayWindow);
         }
 
         /// <summary>

@@ -8,7 +8,7 @@ namespace WebVirtualDisplayClient.app;
 public class TrayApp {
         MenuItem? statusItem;
 
-        public void Initialize(Window parent) {
+        public void Initialize(TrayWindow trayWindow) {
                 RTCPeerConnection peerConnection = WebRTCClient.getPeerConnection();
 
                 peerConnection.OnStarted += () => {
@@ -20,20 +20,14 @@ public class TrayApp {
                                 statusItem.IsEnabled = true;
                         });
                 };
-                
+
+                trayWindow.generateCode();
+
                 ContextMenu contextMenu = new ContextMenu();
 
                 statusItem = new MenuItem { Header = "Status: Disconnected", IsEnabled = false };
                 contextMenu.Items.Add(statusItem);
                 contextMenu.Items.Add(new Separator());
-
-                MenuItem clientsItem = new MenuItem { Header = "View Clients" };
-
-                contextMenu.Items.Add(clientsItem);
-
-                clientsItem.Click += (Object? sender, RoutedEventArgs args) => {
-                        App.clientWindow?.Show();
-                };
 
                 MenuItem exitItem = new MenuItem { Header = "Exit" };
 
@@ -48,7 +42,7 @@ public class TrayApp {
                 service.TooltipText = "Web Virtual Display";
 
                 service.ContextMenu = contextMenu;
-                service.SetParentWindow(parent);
+                service.SetParentWindow(trayWindow);
 
                 service.Register();
 
