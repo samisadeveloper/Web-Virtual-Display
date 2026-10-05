@@ -10,155 +10,205 @@ using SIPSorcery.Net;
 
 namespace WebVirtualDisplayClient;
 
+/*
+ * Genuienly had to have Claude rewrite this class
+ * No idea wth is going on in here I wish I could tell you
+ * Probably has some issues in a few ways I am certain
+ *
+ * Still a mess of a class
+*/
+
 class WebRTCClient {
-        private static RTCPeerConnection peerConnection = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer>() });
-        public static readonly ConcurrentDictionary<uint, string> ssrcToHwnd = new();
+    public static RTCPeerConnection Current => peerConnection;
+    public static readonly ConcurrentDictionary<uint, string> ssrcToHwnd = new();
 
-        private static RTCSessionDescriptionInit? offer;
+    private static volatile RTCPeerConnection peerConnection = null!;
+    private static volatile RTCSessionDescriptionInit? offer;
 
-        private static ConcurrentQueue<String> remoteIceCandidates = new ConcurrentQueue<string>();
-        private static ConcurrentBag<String> localIceCandidates = new ConcurrentBag<string>();
+    private static readonly ConcurrentBag<string> localIceCandidates = new();
 
-        public static RTCPeerConnection getPeerConnection() {
-                return peerConnection;
+    // everything that wants to attach tracks/channels to each connection registers here
+    private static readonly List<Func<RTCPeerConnection, Task>> connectionHandlers = new();
+    private static readonly SemaphoreSlim connectionLock = new(1, 1); // serializes resets + registrations
+    private static readonly SemaphoreSlim offerLock = new(1, 1);      // serializes offer building
+    private static volatile bool suppressNegotiation;
+
+    /// Runs the handler on the current connection (if any) and on every future connection.
+    public static async Task OnConnection(Func<RTCPeerConnection, Task> handler) {
+        await connectionLock.WaitAsync();
+        try {
+            connectionHandlers.Add(handler);
+            if (peerConnection != null) await handler(peerConnection);
+        } finally {
+            connectionLock.Release();
         }
+    }
 
-        private static void ResetConnection() {
-                try {
-                        peerConnection.close();
-                } catch {}
+    public static async Task ResetConnection() {
+        await connectionLock.WaitAsync();
+        try {
+            var old = peerConnection;
+            suppressNegotiation = true; // we build exactly one offer at the end
 
-                peerConnection = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer>() });
-                localIceCandidates.Clear();
-                remoteIceCandidates.Clear();
+            offer = null;
 
-                Task.Run(async () => {
-                        offer = peerConnection.createOffer();
-                        await peerConnection.setLocalDescription(offer);
+            var pc = CreatePeerConnection();
+            peerConnection = pc;          // swap FIRST so the old connection's events are seen as stale
+            localIceCandidates.Clear();
 
-                        // Re-bind the ice candidate listener to the new instance
-                        peerConnection.onicecandidate += (candidate) => {
-                                if (!string.IsNullOrEmpty(candidate.candidate)) {
-                                        localIceCandidates.Add(candidate.candidate);
-                                }
-                        };
-                });
+            try { old?.close(); } catch { }
+
+            foreach (var handler in connectionHandlers.ToArray()) {
+                try { await handler(pc); }
+                catch (Exception ex) { Console.WriteLine($"Connection handler failed: {ex}"); }
+            }
+
+            suppressNegotiation = false;
+            await BuildOffer(pc);
+        } finally {
+            suppressNegotiation = false;
+            connectionLock.Release();
         }
+    }
 
-        public static async Task<RTCDataChannel> createDataChannel() {
-                return await peerConnection.createDataChannel("data-stream");
+    public static async Task InitializeClient(CancellationToken stoppingToken) {
+        await ResetConnection();
+    }
+
+    // kept for any other callers; prefer OnConnection + pc.createDataChannel(label)
+    public static async Task<RTCDataChannel> createDataChannel(string label = "data-stream") {
+        return await peerConnection.createDataChannel(label);
+    }
+
+    // the ONLY place offers get created: createOffer + msid munging + setLocalDescription
+    private static async Task BuildOffer(RTCPeerConnection pc) {
+        await offerLock.WaitAsync();
+        try {
+            if (pc != peerConnection) return;
+
+            var raw = pc.createOffer();
+            var sections = raw.sdp.Split(new[] { "\r\nm=" }, StringSplitOptions.None);
+
+            // section 0 is the session header, the rest are m-lines
+            for (int i = 1; i < sections.Length; i++) {
+                if (sections[i].Contains("a=msid:")) continue;
+
+                var ssrcMatch = Regex.Match(sections[i], @"a=ssrc:(\d+)");
+                if (!ssrcMatch.Success) continue;
+
+                uint ssrc = uint.Parse(ssrcMatch.Groups[1].Value);
+                if (!ssrcToHwnd.TryGetValue(ssrc, out var hwnd)) continue;
+
+                // insert the msid line just before the first a=ssrc line
+                sections[i] = sections[i].Insert(ssrcMatch.Index, $"a=msid:{hwnd} video-{hwnd}\r\n");
+            }
+
+            var munged = new RTCSessionDescriptionInit {
+                type = RTCSdpType.offer,
+                sdp = string.Join("\r\nm=", sections)
+            };
+
+            offer = munged;
+            await pc.setLocalDescription(munged);
+        } finally {
+            offerLock.Release();
         }
+    }
 
-        public async static Task initializeClient(CancellationToken stoppingToken) {
-                peerConnection.onicecandidate += (candidate) => {
-                        if (!string.IsNullOrEmpty(candidate.candidate)) {
-                                localIceCandidates.Add(candidate.candidate);
-                        }
-                };
+    private static RTCPeerConnection CreatePeerConnection() {
+        var pc = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer>() });
 
-                peerConnection.onconnectionstatechange += (state) => {
-                        Console.WriteLine($"WebRTC Connection State Changed: {state}");
+        pc.onicecandidate += (c) => {
+            if (pc != peerConnection) return; // stale connection
+            if (!string.IsNullOrEmpty(c.candidate)) localIceCandidates.Add(c.candidate);
+        };
 
-                        if (state == RTCPeerConnectionState.disconnected || 
-                                        state == RTCPeerConnectionState.failed || 
-                                        state == RTCPeerConnectionState.closed) 
-                        {
-                                Console.WriteLine("\n\n\nPeer disconnected! Resetting WebRTC Client...");
+        pc.onconnectionstatechange += (state) => {
+            if (pc != peerConnection) return; // stale connection
+            Console.WriteLine($"WebRTC Connection State Changed: {state}");
+            if (state is RTCPeerConnectionState.failed or RTCPeerConnectionState.closed)
+                _ = ResetConnection();
+        };
 
-                                ResetConnection();
-                        }
-                };
+        pc.onnegotiationneeded += async () => {
+            if (pc != peerConnection || suppressNegotiation) return;
+            try { await BuildOffer(pc); }
+            catch (Exception ex) { Console.WriteLine($"Renegotiation failed: {ex}"); }
+        };
 
-                peerConnection.onnegotiationneeded += async () => {
-                        offer = peerConnection.createOffer();
+        return pc;
+    }
 
-                        var sections = offer.sdp.Split(new[] { "\r\nm=" }, StringSplitOptions.None);
+    public static void RegisterSignalingRoutes(WebApplication app) {
+        if (offer == null) throw new NullReferenceException("Offer not generated yet");
 
-                        // section 0 is the session header, the rest are m-lines
-                        for (int i = 1; i < sections.Length; i++) {
-                                if (sections[i].Contains("a=msid:")) continue;
+        app.MapPost("/api/webrtc/reset", async () => {
+            await ResetConnection();
+            return Results.Ok();
+        });
 
-                                var ssrcMatch = Regex.Match(sections[i], @"a=ssrc:(\d+)");
-                                if (!ssrcMatch.Success) continue;
+        app.MapGet("/api/webrtc/offer", async () => {
+            // only wait while a fresh offer is being generated (e.g. right after a reset)
+            int attempts = 0;
+            while (offer == null && attempts < 20) {
+                await Task.Delay(100);
+                attempts++;
+            }
 
-                                uint ssrc = uint.Parse(ssrcMatch.Groups[1].Value);
-                                if (!ssrcToHwnd.TryGetValue(ssrc, out var hwnd)) continue;
+            if (offer == null) return Results.StatusCode(503);
 
-                                // insert the msid line just before the first a=ssrc line
-                                sections[i] = sections[i].Insert(ssrcMatch.Index, $"a=msid:{hwnd} video-{hwnd}\r\n");
-                        }
+            // nothing pending: already negotiated, client just keeps polling
+            if (peerConnection.signalingState != RTCSignalingState.have_local_offer)
+                return Results.NoContent();
 
-                        offer = (new RTCSessionDescriptionInit {
-                                type = RTCSdpType.offer,
-                                sdp = string.Join("\r\nm=", sections)
-                        });
+            return Results.Text(offer.sdp.ToString());
+        });
 
-                        await peerConnection.setLocalDescription(offer);
-                };                
+        app.MapPost("/api/webrtc/answer", async (HttpContext ctx, IOptions<JsonOptions> jsonOptions) => {
+            string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
 
-                offer = peerConnection.createOffer();
+            RTCSessionDescriptionInit? answerPayload;
+            try {
+                answerPayload = JsonSerializer.Deserialize<RTCSessionDescriptionInit>(body, jsonOptions.Value.SerializerOptions);
+            } catch (Exception ex) {
+                Console.WriteLine($"ANSWER DESERIALIZE FAILED: {ex}");
+                return Results.BadRequest(ex.Message);
+            }
 
-                await peerConnection.setLocalDescription(offer);
-        }
+            if (answerPayload == null) return Results.BadRequest("null payload");
 
-        public static void RegisterSignalingRoutes(WebApplication app) {
-                if (offer == null) throw new NullReferenceException("Offer not generated yet");
+            if (peerConnection.signalingState != RTCSignalingState.have_local_offer)
+                return Results.Conflict("No pending offer to answer");
 
-                // fix race condition with offer
-                app.MapGet("/api/webrtc/offer", async () => {
-                        int attempts = 0;
-                        // Wait up to 2 seconds if the server is actively generating a new offer
-                        while ((offer == null || peerConnection.signalingState != RTCSignalingState.have_local_offer) && attempts < 20) {
-                                await Task.Delay(100);
-                                attempts++;
-                        }
+            answerPayload.type = RTCSdpType.answer;
+            var result = peerConnection.setRemoteDescription(answerPayload);
+            if (result != SetDescriptionResultEnum.OK) {
+                Console.WriteLine($"setRemoteDescription failed: {result}");
+                return Results.Conflict(result.ToString());
+            }
 
-                        if (offer == null) return Results.NotFound("Offer not ready yet");
+            return Results.Ok();
+        });
 
-                        return Results.Text(offer.sdp.ToString());
-                });
+        app.MapGet("/api/webrtc/ice", () => Results.Json(localIceCandidates));
 
-                app.MapPost("/api/webrtc/answer", async (HttpContext ctx, IOptions<JsonOptions> jsonOptions) => {
-                        string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+        app.MapPost("/api/webrtc/ice", async (HttpContext ctx) => {
+            string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
 
-                        RTCSessionDescriptionInit? answerPayload;
-                        try {
-                                answerPayload = JsonSerializer.Deserialize<RTCSessionDescriptionInit>(body, jsonOptions.Value.SerializerOptions);
-                        } catch (Exception ex) {
-                                Console.WriteLine($"ANSWER DESERIALIZE FAILED: {ex}");
-                                return Results.BadRequest(ex.Message);
-                        }
+            RTCIceCandidateInit? icePayload;
+            try {
+                icePayload = System.Text.Json.JsonSerializer.Deserialize<RTCIceCandidateInit>(body);
+            } catch (Exception ex) {
+                Console.WriteLine($"ICE DESERIALIZE FAILED: {ex}");
+                return Results.BadRequest(ex.Message);
+            }
 
-                        if (answerPayload == null) {
-                                return Results.BadRequest("null payload");
-                        }
+            if (icePayload != null && !string.IsNullOrEmpty(icePayload.candidate)) {
+                peerConnection.addIceCandidate(icePayload);
+                return Results.Ok();
+            }
 
-                        answerPayload.type = RTCSdpType.answer;
-                        peerConnection.setRemoteDescription(answerPayload);
-                        return Results.Ok();
-                });
-
-                app.MapGet("/api/webrtc/ice", () => Results.Json(localIceCandidates));
-
-                app.MapPost("/api/webrtc/ice", async (HttpContext ctx) => {
-                        string body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
-
-                        RTCIceCandidateInit? icePayload;
-
-                        try {
-                                icePayload = System.Text.Json.JsonSerializer.Deserialize<RTCIceCandidateInit>(body);
-                        } catch (Exception ex) { // failed to deserialize the payload
-                                Console.WriteLine($"ICE DESERIALIZE FAILED: {ex}");
-                                return Results.BadRequest(ex.Message);
-                        }
-
-                        // passes ICE 
-                        if (icePayload != null && !string.IsNullOrEmpty(icePayload.candidate)) {
-                                peerConnection.addIceCandidate(icePayload);
-                                return Results.Ok();
-                        } else {
-                                return Results.BadRequest();
-                        }
-                });
-        }
+            return Results.BadRequest();
+        });
+    }
 }
