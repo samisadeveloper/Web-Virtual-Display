@@ -14,14 +14,24 @@ public class TrayApp {
                 peerConnection.OnStarted += () => {
                         if (statusItem == null) return;
 
-                        // this needs to run on the main thread
                         App.Current.Dispatcher.BeginInvoke(() => {
                                 statusItem.Header = "Status: Connected";
                                 statusItem.IsEnabled = true;
+
+                                trayWindow.ConnectionStatus.Text = "Connected";
                         });
                 };
 
-                trayWindow.generateCode();
+                peerConnection.OnClosed += () => {
+                        if (statusItem == null) return;
+
+                        App.Current.Dispatcher.BeginInvoke(() => {
+                                statusItem.Header = "Status: Disconnected";
+                                statusItem.IsEnabled = false;
+
+                                trayWindow.ConnectionStatus.Text = "Disconnected";
+                        });
+                };
 
                 ContextMenu contextMenu = new ContextMenu();
 

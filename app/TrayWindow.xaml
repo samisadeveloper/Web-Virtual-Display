@@ -27,7 +27,7 @@
         <StackPanel Grid.Row="0">
             <StackPanel Width="256">
                 <ui:TextBlock TextWrapping="Wrap" Text="Status" FontSize="36" VerticalAlignment="Center" Foreground="White" HorizontalAlignment="Center"/>
-                <ui:TextBlock TextWrapping="Wrap" Text="Disconnected" FontSize="20" Foreground="#FFD0CFCF" HorizontalAlignment="Center"/>
+                <ui:TextBlock x:Name="ConnectionStatus" TextWrapping="Wrap" Text="Disconnected" FontSize="20" Foreground="#FFD0CFCF" HorizontalAlignment="Center"/>
             </StackPanel>
         </StackPanel>
 
@@ -36,17 +36,19 @@
                     VerticalAlignment="Center"
                     HorizontalAlignment="Center">
             <Border Width="250" Height="250"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
                     CornerRadius="15" BorderThickness="5,5,5,5" Background="White">
                 <Border.Effect>
                     <DropShadowEffect Color="#FF333131" RenderingBias="Quality" ShadowDepth="15" Direction="-30" BlurRadius="50" Opacity="0.45"/>
                 </Border.Effect>
-                <!-- put your QR Image here -->
+                <Image x:Name="QRCodeImage" Width="230" Height="230" Stretch="Uniform" />
             </Border>
             <DockPanel Height="25" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,15,0,14.6">
                 <ui:SymbolIcon Width="20" Symbol="Communication20" Height="20" VerticalAlignment="Center" Foreground="#FF2BBFE6"/>
-                <ui:TextBlock TextWrapping="Wrap" Text="192.168.0.201:5000" Foreground="#FF2BBFE6" FontSize="18" Width="158" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <ui:TextBlock TextWrapping="Wrap" x:Name="IpAddressText" Text="N/A" TextAlignment="Center" Foreground="#FF2BBFE6" FontSize="18" Width="200" HorizontalAlignment="Left" VerticalAlignment="Center"/>
             </DockPanel>
-            <ui:CardAction Content="Copy to clipboard" Height="57" Width="210" BorderThickness="1,1,1,1"/>
+            <ui:CardAction x:Name="ClipboardButton" Content="Copy to clipboard" Margin="0,35,0,0" Height="57" Width="210" BorderThickness="1,1,1,1"/>
         </StackPanel>
     </Grid>
 </Window>
