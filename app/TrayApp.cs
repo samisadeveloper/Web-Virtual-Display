@@ -8,30 +8,34 @@ namespace WebVirtualDisplayClient.app;
 public class TrayApp {
         MenuItem? statusItem;
 
-        public void Initialize(TrayWindow trayWindow) {
-                RTCPeerConnection peerConnection = WebRTCClient.getPeerConnection();
+        public async void Initialize(TrayWindow trayWindow) {
+                Task PeerConnected(RTCPeerConnection peerConnection) {
+                        peerConnection.OnStarted += () => {
+                                if (statusItem == null) return;
 
-                peerConnection.OnStarted += () => {
-                        if (statusItem == null) return;
+                                App.Current.Dispatcher.BeginInvoke(() => {
+                                                statusItem.Header = "Status: Connected";
+                                                statusItem.IsEnabled = true;
 
-                        App.Current.Dispatcher.BeginInvoke(() => {
-                                statusItem.Header = "Status: Connected";
-                                statusItem.IsEnabled = true;
+                                                trayWindow.ConnectionStatus.Text = "Connected";
+                                                });
+                        };
 
-                                trayWindow.ConnectionStatus.Text = "Connected";
-                        });
+                        peerConnection.OnClosed += () => {
+                                if (statusItem == null) return;
+
+                                App.Current.Dispatcher.BeginInvoke(() => {
+                                                statusItem.Header = "Status: Disconnected";
+                                                statusItem.IsEnabled = false;
+
+                                                trayWindow.ConnectionStatus.Text = "Disconnected";
+                                                });
+                        };
+
+                        return Task.CompletedTask;
                 };
 
-                peerConnection.OnClosed += () => {
-                        if (statusItem == null) return;
-
-                        App.Current.Dispatcher.BeginInvoke(() => {
-                                statusItem.Header = "Status: Disconnected";
-                                statusItem.IsEnabled = false;
-
-                                trayWindow.ConnectionStatus.Text = "Disconnected";
-                        });
-                };
+                await WebRTCClient.OnConnection(PeerConnected);
 
                 ContextMenu contextMenu = new ContextMenu();
 
