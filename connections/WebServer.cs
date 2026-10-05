@@ -34,7 +34,7 @@ class WebServer : BackgroundService
                         RequestPath = ""
                 });
 
-                await WebRTCClient.initializeClient(stoppingToken);
+                await WebRTCClient.InitializeClient(stoppingToken);
                 WebRTCClient.RegisterSignalingRoutes(app); // register the signaling
 
                 await app.RunAsync("http://0.0.0.0:5000");
