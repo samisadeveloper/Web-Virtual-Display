@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace WebVirtualDisplayClient;
 
@@ -20,6 +21,9 @@ class WebServer : BackgroundService
                 builder.Services.ConfigureHttpJsonOptions(options => {
                         options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
                 });
+
+                builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.None);
+                builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.None);
 
                 WebApplication app = builder.Build();
                 app.UseCors("AllowReact");
