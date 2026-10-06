@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 using System.Text.Json;
-using ScreenRecorderLib;
 using SIPSorcery.Net;
 using WebVirtualDisplayClient.recording;
 using WebVirtualDisplayClient.util;
@@ -14,9 +12,7 @@ namespace WebVirtualDisplayClient.input
                 private static SIPSorcery.Net.RTCDataChannel? mouseUpdate;
                 private static SIPSorcery.Net.RTCDataChannel? windowMovement;
 
-                
                 public struct WindowData {
-                        public Recorder? recorder;
                         public IntPtr hwnd;
                         public int rawX;
                         public int x;
