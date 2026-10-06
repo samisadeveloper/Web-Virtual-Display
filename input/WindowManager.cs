@@ -88,10 +88,13 @@ namespace WebVirtualDisplayClient.input
 
                         if (window.rawX + window.width > extent.X) {
                                 if (!isRecording) {
+                                        Console.WriteLine($"Now recording: {window.hwnd}");
                                         RecordingManager.RecordWindow(window.hwnd);
                                 }
                         } else {
                                 if (isRecording) {
+                                        Console.WriteLine($"Stop recording: {window.hwnd}");
+
                                         RecordingManager.EndRecording(window.hwnd);
                                         WindowRegistry.TryRemove(window.hwnd, out _);
                                 }
