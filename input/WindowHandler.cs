@@ -90,12 +90,64 @@ class WindowHandler : BackgroundService
                 draggedWindow = data;
         }
 
-        private void onMouseClick(Object? sender, MouseEventArgs mouseArgs) {
-                MouseEventType type = mouseArgs.type;
+        private static void onMouseClick(Object? sender, MouseUtil.MouseEventArgs mouseArgs) {
+                MouseEventType clickType = mouseArgs.type;
 
-                if (type.Equals(MouseEventType.LEFT_RELEASED)) {
+                if (clickType.Equals(MouseEventType.LEFT_RELEASED)) {
                         draggedWindow = default;
                         beyondExtent = false;
+                }
+
+
+                Point globalPoint = MouseHandler.GlobalMousePoint;
+                Point point = new Point(){ X = globalPoint.X - extent.X, Y = globalPoint.Y };
+
+                // find the window which was clicked on
+                WindowData window = WindowManager.Windows.FirstOrDefault(window => window.isInWindow(point));
+
+                if (window.hwnd == 0) return;
+
+                DragOffset offset = new DragOffset();
+                offset.FromLeft = point.X - window.x;
+                offset.FromRight = window.width - offset.FromLeft;
+                offset.FromTop = point.Y - window.y;
+
+                WindowCachedTrackData windowData = new WindowCachedTrackData() {
+                        dragOffset = offset,
+                        hwnd = window.hwnd,
+                        // window is fully beyond extent and should be virtual
+                        width = window.width,
+                        height = window.height,
+                };
+
+                // get mouse position relative to the window
+                Point relativePoint = new Point() { X = point.X - window.x, Y = point.Y - window.y };
+
+                // TODO: use a different number instead of a harcdoded one, it should scale depending on the monitor DPI or whatever
+                if (relativePoint.Y < 50) {
+                        if (clickType.Equals(MouseEventType.LEFT_PRESSED)) {
+                                RawWindowHandler.rawWindowHeld?.Invoke(null, windowData);
+                        } else if (clickType.Equals(MouseEventType.LEFT_RELEASED)) {
+                                RawWindowHandler.rawWindowReleased?.Invoke(null, windowData);
+                        }
+                }
+
+                // TODO: there is a bug where you cannot pick up a window at all due to another window being ontop of it
+
+                if (mouseArgs.type.Equals(MouseEventType.SCROLL)) {
+                        SetForegroundWindow(window.hwnd);
+
+                        // first capture the window position
+                        int x = window.rawX;
+                        int y = window.y;
+
+                        WindowHandler.MoveWindow(window.hwnd, new Point(){X = 0, Y = 0});
+
+                        ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
+
+                        WindowHandler.MoveWindow(window.hwnd, new Point(){X = x, Y = y});
+                } else {
+                        ClickWindowAt(window.hwnd, relativePoint, mouseArgs);
                 }
         }
 
@@ -104,6 +156,10 @@ class WindowHandler : BackgroundService
 
                 SetWindowPos(hwnd, IntPtr.Zero, clampedX, point.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
         }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
