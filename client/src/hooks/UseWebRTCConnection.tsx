@@ -119,16 +119,26 @@ export function useWebRTCConnection(onDataReceived?: (data: any) => void) {
       };
 
       pc.ontrack = (event) => {
-        const targetStream = event.streams[event.streams.length - 1];
-        if (!targetStream) return;
+              const targetStream = event.streams[event.streams.length - 1];
+              if (!targetStream) return;
 
-        console.log('incoming stream: ', targetStream.id);
+              console.log('incoming stream: ', targetStream.id);
 
-        setStreams((prev) => {
-          // Same stream already tracked: return the same reference so React skips the update
-          if (prev[targetStream.id]) return prev;
-          return { ...prev, [targetStream.id]: targetStream };
-        });
+              setStreams((prev) => {
+                      // same MediaStream object: nothing to do. Same id but a new object: replace it.
+                      if (prev[targetStream.id] === targetStream) return prev;
+                      return { ...prev, [targetStream.id]: targetStream };
+              });
+
+              // drop the stream when its last track is removed (the renegotiation after EndRecording)
+              targetStream.onremovetrack = () => {
+                      if (targetStream.getTracks().length > 0) return;
+                      setStreams((prev) => {
+                              if (prev[targetStream.id] !== targetStream) return prev; // a newer stream replaced it, leave it alone
+                              const { [targetStream.id]: _, ...rest } = prev;
+                              return rest;
+                      });
+              };
       };
 
       pc.ondatachannel = (event) => {

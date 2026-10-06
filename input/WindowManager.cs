@@ -82,14 +82,20 @@ namespace WebVirtualDisplayClient.input
 
                         if (window.hwnd == 0) return;
 
-                        bool isNewWindow = WindowRegistry.TryAdd(window.hwnd, window);
+                        bool isRecording = RecordingManager.HasRecording(window.hwnd);
+
                         WindowRegistry[window.hwnd] = window;
 
                         if (window.rawX + window.width > extent.X) {
-                                if (isNewWindow) {
+                                if (!isRecording) {
                                         RecordingManager.RecordWindow(window.hwnd);
                                 }
-                        } 
+                        } else {
+                                if (isRecording) {
+                                        RecordingManager.EndRecording(window.hwnd);
+                                        WindowRegistry.TryRemove(window.hwnd, out _);
+                                }
+                        }
                 }
 
                 public static void sendMouseMovement(Point point) {
