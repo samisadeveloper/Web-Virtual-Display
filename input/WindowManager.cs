@@ -86,14 +86,17 @@ namespace WebVirtualDisplayClient.input
 
                         WindowRegistry[window.hwnd] = window;
 
+                        String title = WindowUtil.GetWindowTitle(window.hwnd);
+
                         if (window.rawX + window.width > extent.X) {
                                 if (!isRecording) {
-                                        Console.WriteLine($"Now recording: {window.hwnd}");
+                                        Console.WriteLine($"Now recording: {window.hwnd} | {title}");
+
                                         RecordingManager.RecordWindow(window.hwnd);
                                 }
                         } else {
                                 if (isRecording) {
-                                        Console.WriteLine($"Stop recording: {window.hwnd}");
+                                        Console.WriteLine($"Stop recording: {window.hwnd} | {title}");
 
                                         RecordingManager.EndRecording(window.hwnd);
                                         WindowRegistry.TryRemove(window.hwnd, out _);
