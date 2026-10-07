@@ -100,11 +100,14 @@ public class RecordingManager {
         }
 
         public static void RecordWindow(IntPtr hwnd) {
+                var session = new RecordingSession { Encoder = new Vp8NetVideoEncoderEndPoint() };
+
+                if (!Sessions.TryAdd(hwnd, session)) return;
+
                 Task.Run(async () => {
                         try {
-                                var session = new RecordingSession { Encoder = new Vp8NetVideoEncoderEndPoint() };
                                 await session.Encoder.StartVideo();
-                                Sessions[hwnd] = session;
+                                if (session.Ended) return;
 
                                 Task Attach(RTCPeerConnection pc) {
                                         if (session.Ended) return Task.CompletedTask;
@@ -150,8 +153,12 @@ public class RecordingManager {
                                 session.Recorder.Record(Stream.Null);
 
                         } catch (Exception ex) {
-                                Console.WriteLine($"recordWindow failed for {hwnd}: {ex}");
+                                Console.WriteLine($"RecordingManager: record window failed for {hwnd} | {WindowUtil.GetWindowTitle(hwnd)}: {ex}");
+                                session.Ended = true;
+
+                                Sessions.TryRemove(new KeyValuePair<IntPtr, RecordingSession>(hwnd, session));
                         }
                 });
         }
+
 }
