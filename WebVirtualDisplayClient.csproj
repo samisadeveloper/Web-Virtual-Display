@@ -18,7 +18,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
 
     <!-- for publishing -->
-    <PublishSingleFile>true</PublishSingleFile>
+    <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfContained>true</IncludeNativeLibrariesForSelfContained>
 
