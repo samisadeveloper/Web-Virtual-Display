@@ -19,6 +19,9 @@ public class RecordingManager {
                 public uint LastSsrc;
                 public volatile bool Ended;
                 public RTCPeerConnection? CurrentPc;
+
+                public readonly object Gate = new();
+                public bool EncoderClosed;
         };
 
         private static readonly ConcurrentDictionary<IntPtr, RecordingSession> Sessions = new();
@@ -54,7 +57,7 @@ public class RecordingManager {
                                 SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.I420
                         );
                 } catch (Exception ex) {
-                        Console.WriteLine($"Something went wrong while processing frame from recorder {ex.Message}");
+                        Console.WriteLine($"Something went wrong while processing frame from recorder {ex}");
                 }
         }
 
@@ -78,25 +81,43 @@ public class RecordingManager {
                 };
         }
 
-        public static void EndRecording(IntPtr hwnd) {
-                Task.Run(async () => {
-                        if (!Sessions.TryRemove(hwnd, out var session)) return;
+        private static async Task Teardown(RecordingSession s) {
+                Recorder? rec;
+                bool closeEncoder;
 
-                        session.Ended = true;
+                lock (s.Gate) {
+                        s.Ended = true;
 
-                        session.Recorder.OnFrameRecorded -= session.FrameHandler;
-                        session.Recorder.Stop();
-                        session.Recorder.Dispose();
+                        rec = s.Recorder;
+                        s.Recorder = null!;
+                        if (rec != null && s.FrameHandler != null) rec.OnFrameRecorded -= s.FrameHandler;
 
-                        if (session.SendHandler != null) session.Encoder.OnVideoSourceEncodedSample -= session.SendHandler;
-                        WebRTCClient.ssrcToHwnd.TryRemove(session.LastSsrc, out _);
-
-                        if (session.CurrentPc != null && session.Track != null) {
-                                session.CurrentPc.removeTrack(session.Track);
+                        if (s.SendHandler != null) {
+                                s.Encoder.OnVideoSourceEncodedSample -= s.SendHandler;
+                                s.SendHandler = null;
                         }
 
-                        await session.Encoder.CloseVideo();
-                });
+                        WebRTCClient.ssrcToHwnd.TryRemove(s.LastSsrc, out _);
+
+                        if (s.CurrentPc != null && s.Track != null) {
+                                s.CurrentPc.removeTrack(s.Track);
+                                s.Track = null!;
+                        }
+
+                        closeEncoder = !s.EncoderClosed;
+                        s.EncoderClosed = true;
+                }
+
+                if (rec != null) {
+                        try { rec.Stop(); } catch { }
+                        rec.Dispose();
+                }
+                if (closeEncoder) await s.Encoder.CloseVideo();
+        }
+
+        public static void EndRecording(IntPtr hwnd) {
+                if (!Sessions.TryRemove(hwnd, out var session)) return;
+                Task.Run(() => Teardown(session));
         }
 
         public static void RecordWindow(IntPtr hwnd) {
@@ -107,28 +128,33 @@ public class RecordingManager {
                 Task.Run(async () => {
                         try {
                                 await session.Encoder.StartVideo();
-                                if (session.Ended) return;
 
                                 Task Attach(RTCPeerConnection pc) {
-                                        if (session.Ended) return Task.CompletedTask;
+                                        lock (session.Gate) {
+                                                if (session.Ended) return Task.CompletedTask;
 
-                                        // clean up whatever the previous connection left behind
-                                        if (session.SendHandler != null) session.Encoder.OnVideoSourceEncodedSample -= session.SendHandler;
-                                        WebRTCClient.ssrcToHwnd.TryRemove(session.LastSsrc, out _);
+                                                // clean up whatever the previous connection left behind
+                                                if (session.SendHandler != null) session.Encoder.OnVideoSourceEncodedSample -= session.SendHandler;
+                                                WebRTCClient.ssrcToHwnd.TryRemove(session.LastSsrc, out _);
 
-                                        // fresh track per connection
-                                        var track = new MediaStreamTrack(session.Encoder.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
-                                        session.LastSsrc = track.Ssrc;
-                                        session.CurrentPc = pc;
-                                        session.Track = track;
+                                                // fresh track per connection
+                                                var track = new MediaStreamTrack(session.Encoder.GetVideoSourceFormats(), MediaStreamStatusEnum.SendOnly);
+                                                session.LastSsrc = track.Ssrc;
+                                                session.CurrentPc = pc;
+                                                session.Track = track;
 
-                                        AttachVideoTrack(hwnd, pc, track, session.Encoder, ref session.SendHandler);
+                                                AttachVideoTrack(hwnd, pc, track, session.Encoder, ref session.SendHandler);
+                                        }
 
                                         return Task.CompletedTask;
                                 }
 
                                 // runs on the current connection and every future one, never concurrently with a reset
                                 await WebRTCClient.OnConnection(Attach);
+                                if (session.Ended) { 
+                                        await Teardown(session);
+                                        return;
+                                }
 
                                 RecorderOptions options = new RecorderOptions {
                                         OutputOptions = new OutputOptions { IsVideoFramePreviewEnabled = true },
@@ -141,17 +167,33 @@ public class RecordingManager {
                                         }
                                 };
 
-                                session.Recorder = Recorder.CreateRecorder(options);
+                                Recorder recorder = Recorder.CreateRecorder(options);
 
                                 byte[]? frameBuffer = [];
 
-                                session.FrameHandler = (_, args) => {
-                                        if (!session.Ended) encodeFrame(ref frameBuffer, args.BitmapData, session.Encoder);
+                                EventHandler<FrameRecordedEventArgs> handler = (_, args) => {
+                                        lock (session.Gate) {
+                                                if (session.Ended) return;
+                                                encodeFrame(ref frameBuffer, args.BitmapData, session.Encoder);
+                                        }
                                 };
 
-                                session.Recorder.OnFrameRecorded += session.FrameHandler;
-                                session.Recorder.Record(Stream.Null);
+                                bool started = false;
+                                lock (session.Gate) {
+                                        if (!session.Ended) {
+                                                session.Recorder = recorder;
+                                                session.FrameHandler = handler;
+                                                recorder.OnFrameRecorded += session.FrameHandler;
+                                                recorder.Record(Stream.Null);
 
+                                                started = true;
+                                        }
+                                }
+
+                                if (!started) {
+                                        recorder.Dispose(); 
+                                        await Teardown(session);
+                                }
                         } catch (Exception ex) {
                                 Console.WriteLine($"RecordingManager: record window failed for {hwnd} | {WindowUtil.GetWindowTitle(hwnd)}: {ex}");
                                 session.Ended = true;
