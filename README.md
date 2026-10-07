@@ -6,7 +6,7 @@ Run the .NET application and connect any device with a browser to act as an addi
 Short demo video of my app working with multiple windows, playback, input, and typing.
 ![App Demo](.github/media/demo.gif)
 
-### Installation
+# Installation
 1: Simply download and run the binary from releases.<br>
 2: Once installed and running, open the interface from the tray.<br>
 3: Copy and share the URL to other devices on your LAN **OR** scan the QR Code.
