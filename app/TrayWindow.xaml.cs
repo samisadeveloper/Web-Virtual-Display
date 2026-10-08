@@ -12,9 +12,17 @@ namespace WebVirtualDisplayClient.app;
 public partial class TrayWindow : Window {
         private String ipAddress = "";
 
+        protected override void OnDeactivated(EventArgs e) {
+                Hide();
+        }
+
         protected override void OnSourceInitialized(EventArgs e)
         {
                 base.OnSourceInitialized(e);
+
+                IsVisibleChanged += (_, e) => {
+                        if ((bool) e.NewValue) { Activate(); Focus(); }
+                };
 
                 ipAddress = GetSystemIpAddress();
 
