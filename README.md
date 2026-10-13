@@ -1,5 +1,5 @@
-<img align="left" width="200" height="200" alt="Project Logo" src=".github/media/icon.svg">
-# Web Virtual Display
+<svg align="left" width="200" height="200" alt="Project Logo" src=".github/media/icon.svg">
+<h1>Web Virtual Display</h1>
 <br clear="left" />
 Virtual Display Software without the need of drivers or additional software.
 Run the .NET application and connect any device with a browser to act as an additional display.
